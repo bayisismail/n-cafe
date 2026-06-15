@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N Cafe - Organic South Indian Delights</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Order fresh, steaming masala dosas, idlis, and filter coffee from N Cafe. Fast checkout and seamless barcode redemptions.">
+  <meta name="keywords" content="N Cafe, South Indian food, Masala Dosa, Filter Coffee, Canteen order, QR payment, Barcode redemption">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- QR Code & Scanner Libraries (NEW) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <!-- Style Sheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header Section -->
+  <header>
+    <div class="logo-container">
+      <div class="logo-icon">N</div>
+      <div class="logo-text">
+        <h1>N <span>Cafe</span></h1>
+        <p>Misty Hills Kitchen</p>
+      </div>
+    </div>
+    
+    <nav>
+      <!-- Customer Nav Links -->
+      <div id="customer-nav" class="nav-links">
+        <button class="nav-btn active" data-view="home" id="btn-nav-home">
+          <i class="fas fa-home"></i> Home Menu
+        </button>
+        <button class="nav-btn" onclick="AppRouter.openTicketRetrievalGate()" id="btn-nav-retrieve">
+          <i class="fas fa-ticket-alt"></i> My Bills
+        </button>
+        <button class="cart-icon-btn" id="cart-toggle-btn" onclick="toggleCartDrawer(true)">
+          <i class="fas fa-shopping-basket"></i>
+          <span class="cart-badge" id="nav-cart-badge" style="display: none;">0</span>
+        </button>
+      </div>
+      
+      <!-- Shared Header Status Info for Admin/Scanner Roles -->
+      <div id="admin-nav-header" class="nav-links" style="display: none;">
+        <!-- Exit buttons injected by JS -->
+      </div>
+    </nav>
+  </header>
+
+  <!-- Main Container -->
+  <main>
+    
+    <!-- ==================== CUSTOMER ROLE SECTION ==================== -->
+    <div id="customer-section" class="role-section">
+      
+      <!-- Sub-Navigation Category Filter Panel (Only visible on customer view) -->
+      <div id="customer-sub-nav" class="customer-view active" style="display: block;">
+        <!-- Filters -->
+        <div class="filters-container">
+          <div class="categories">
+            <button class="cat-btn active" data-category="All" id="filter-cat-all">All Delights</button>
+            <button class="cat-btn" data-category="Breakfast" id="filter-cat-breakfast">Breakfast</button>
+            <button class="cat-btn" data-category="Lunch" id="filter-cat-lunch">Lunch</button>
+            <button class="cat-btn" data-category="Dinner" id="filter-cat-dinner">Dinner</button>
+            <button class="cat-btn" data-category="Snacks" id="filter-cat-snacks">Snacks & Combos</button>
+            <button class="cat-btn" data-category="Beverages" id="filter-cat-beverages">Beverages</button>
+          </div>
+          <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search food items..." id="search-food">
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: Home Grid -->
+      <section id="view-home" class="view-section customer-view customer-tab-view active">
+        <!-- Hero Canteen Banner -->
+        <div class="hero-banner">
+          <h2>Fresh. Steaming. <span>Organic.</span></h2>
+          <p>Savor traditional South Indian delights prepared daily in the heart of the misty Nilgiri hills using farm-sourced ingredients.</p>
+          <div style="margin-bottom: 1.5rem;">
+            <button type="button" class="btn-sm btn-sm-accent" onclick="AppRouter.openTicketRetrievalGate()" style="padding: 0.6rem 1.25rem; font-size: 0.9rem; border-radius: 30px; font-weight: bold; background: var(--accent); color: var(--bg-dark);">
+              <i class="fas fa-ticket-alt"></i> Retrieve Unused Tickets / My Bills
+            </button>
+          </div>
+          <div class="tagline-badges">
+            <span class="tagline-badge"><i class="fas fa-leaf"></i> 100% Organic Ingredients</span>
+            <span class="tagline-badge"><i class="fas fa-shipping-fast"></i> Counter Pick-up via QR</span>
+            <span class="tagline-badge"><i class="fas fa-qrcode"></i> Dynamic QR Payments</span>
+          </div>
+        </div>
+
+        <!-- Food Grid -->
+        <div class="food-grid" id="food-menu-grid">
+          <!-- Food items populated by JS -->
+        </div>
+      </section>
+
+      <!-- VIEW: Checkout & Pay Simulation -->
+      <section id="view-checkout" class="view-section customer-view customer-tab-view">
+        <div class="booking-container">
+          <h3><i class="fas fa-wallet" style="color: var(--accent); margin-right: 0.5rem;"></i> Order Checkout</h3>
+          
+          <!-- Order breakdown list -->
+          <div id="checkout-order-summary" class="mb-3" style="background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 12px; border: 1px solid var(--border-dark);">
+            <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Selected Delights</h4>
+            <div id="checkout-items-summary">
+              <!-- JS builds rows -->
+            </div>
+            <div style="border-top: 1px solid var(--border-dark); padding-top: 0.75rem; margin-top: 0.5rem;">
+              <div class="flex justify-between" style="font-size: 0.85rem; color: var(--text-muted);">
+                <span>Subtotal</span>
+                <span id="checkout-subtotal">₹0</span>
+              </div>
+              <div class="flex justify-between" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+                <span>GST (5%)</span>
+                <span id="checkout-tax">₹0</span>
+              </div>
+              <div class="flex justify-between" style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-top: 0.5rem;">
+                <span>Total Amount</span>
+                <span id="checkout-total" style="color: var(--accent);">₹0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Checkout Form Details -->
+          <div id="checkout-form-details">
+            <form id="checkout-form">
+              <div class="form-group">
+                <label for="cust-name">Your Full Name</label>
+                <input type="text" id="cust-name" placeholder="Enter name" required autocomplete="name">
+              </div>
+              <div class="form-group">
+                <label for="cust-phone">Phone Number</label>
+                <input type="tel" id="cust-phone" placeholder="Enter 10-digit number" pattern="[0-9]{10}" required autocomplete="tel">
+              </div>
+              <div class="form-group">
+                <label for="cust-passkey">Select a Pass Key (4-digit PIN to retrieve ticket later)</label>
+                <input type="password" id="cust-passkey" placeholder="Enter 4-digit PIN (e.g. 1234)" pattern="[0-9]{4}" maxlength="4" required autocomplete="new-password">
+              </div>
+              <button type="submit" class="checkout-btn" id="btn-place-order">
+                <i class="fas fa-arrow-right"></i> Proceed to Payment Gateway
+              </button>
+            </form>
+          </div>
+
+          <!-- N PAY PAYMENT GATEWAY SANDBOX SIMULATION CONTAINER -->
+          <div id="payment-simulation-container" style="display: none; position: relative;">
+            <div class="npay-gateway-card">
+              
+              <!-- Gateway Header -->
+              <div class="npay-header">
+                <div class="npay-header-logo">
+                  <i class="fas fa-shield-alt" style="color: var(--text-green);"></i> N<span>Pay</span>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
+                  <div class="npay-amount-tag">Amount: ₹0</div>
+                  <div style="font-size: 0.72rem; color: #ff9f43; font-weight: 600; background: rgba(255, 159, 67, 0.1); padding: 0.15rem 0.4rem; border-radius: 4px;" id="gdrive-reserve-timer-box">
+                    Reserved: <span id="checkout-reserve-timer">05:00</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gateway Body -->
+              <div class="npay-body">
+                
+                <!-- Sidebar options tabs -->
+                <div class="npay-sidebar-tabs">
+                  <button type="button" class="npay-tab-btn active" data-tab="qr">
+                    <i class="fas fa-qrcode"></i> UPI QR Code
+                  </button>
+                  <button type="button" class="npay-tab-btn" data-tab="upi">
+                    <i class="fas fa-mobile-alt"></i> UPI Push Request
+                  </button>
+                </div>
+
+                <!-- Tab Panels -->
+                <!-- 1. QR Code panel -->
+                <div class="npay-tab-content-panel active" id="npay-panel-qr" style="text-align: center;">
+                  <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">Scan & Pay via UPI</h4>
+                  
+                  <div style="font-size: 0.75rem; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: 8px; margin-bottom: 0.5rem; text-align: left; line-height: 1.3;">
+                    <strong>Payee Name:</strong> <span id="npay-upi-merchant">--</span><br>
+                    <strong>UPI Address:</strong> <span id="npay-upi-vpa" style="color: var(--accent); font-family: monospace;">--</span>
+                  </div>
+
+                  <div class="qr-simulation-box">
+                    <div class="qr-placeholder">
+                      <canvas id="npay-qr-canvas" width="180" height="180"></canvas>
+                      <div class="qr-scan-line"></div>
+                    </div>
+                  </div>
+                  <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted);">
+                    <i class="fas fa-lock" style="color: var(--success); margin-right: 0.25rem;"></i> Stock locked for secure checkout
+                  </div>
+
+                  <div style="margin: 0.6rem 0; padding: 0.6rem; font-size: 0.75rem; color: #ffb703; background: rgba(255, 183, 3, 0.08); border: 1px solid rgba(255, 183, 3, 0.2); border-radius: 8px; text-align: left; line-height: 1.4;">
+                    <i class="fas fa-info-circle" style="margin-right: 0.25rem;"></i> <strong>Simulator Note:</strong> Scan this code with a phone UPI app to pay, or click the green <strong>Simulate QR Payment Success</strong> button below to generate your final Food Collection Ticket QR code. (Do not scan this payment QR code at the counter).
+                  </div>
+
+                  <!-- Open in Mobile UPI Apps (GPAY, PhonePe, Paytm selector intent link) -->
+                  <a id="npay-mobile-upi-btn" href="#" class="npay-pay-btn" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-decoration: none; margin-top: 0.5rem; font-size: 0.85rem; font-weight: 600;">
+                    <i class="fas fa-mobile-alt"></i> Open in GPay / PhonePe / Paytm
+                  </a>
+
+                  <button type="button" class="npay-pay-btn" style="background: linear-gradient(135deg, var(--success), #059669); color: white; margin-top: 0.5rem;" id="btn-npay-qr-success">
+                    Simulate QR Payment Success
+                  </button>
+                </div>
+
+                <!-- 2. UPI Push Request panel -->
+                <div class="npay-tab-content-panel" id="npay-panel-upi">
+                  <h4 style="font-size: 1rem; margin-bottom: 1rem;">UPI ID Request Link</h4>
+                  <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.75rem;">Enter UPI ID / VPA</label>
+                    <input type="text" id="gateway-vpa-input" placeholder="e.g. customername@upi" required>
+                  </div>
+                  <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.3;">
+                    A request will be sent to your UPI application (Google Pay, PhonePe, Paytm). Open the app and approve the transaction.
+                  </p>
+                  <button type="button" class="npay-pay-btn" id="btn-npay-vpa-request">
+                    <i class="fas fa-paper-plane"></i> Send Push Request
+                  </button>
+                </div>
+
+              </div>
+
+              <!-- Cancel Gateway Button (NEW) -->
+              <div style="padding: 0 1.5rem 1.5rem 1.5rem; text-align: center;">
+                <button type="button" id="btn-npay-cancel" style="background: transparent; border: 1px solid var(--border-dark); color: var(--text-muted); padding: 0.6rem; font-size: 0.8rem; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 0.4rem;" onclick="cancelPaymentGateway()">
+                  <i class="fas fa-times"></i> Cancel Payment & Return to Cart
+                </button>
+              </div>
+
+              <!-- Transaction processing loader mask overlay -->
+              <div class="npay-loader-overlay" id="npay-loader-screen">
+                <div class="npay-spinner"></div>
+                <div id="npay-loader-label" style="font-weight: 500; font-size: 0.95rem; color: var(--text-main);">Securing connection...</div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- VIEW: Booking Barcode Ticket -->
+      <section id="view-ticket" class="view-section customer-view customer-tab-view">
+        <div id="ticket-timer-display" class="ticket-timer-box" style="display: none;">
+          <span><i class="fas fa-clock"></i> Ticket Validity Countdown</span>
+          <span id="ticket-timer-counter" class="ticket-timer-val">10:00:00</span>
+        </div>
+        <div class="ticket-wrapper">
+          <!-- Overlays -->
+          <div id="ticket-overlay-expired" class="ticket-overlay expired" style="display: none;">
+            <i class="fas fa-times-circle"></i>
+            <h3>TICKET EXPIRED</h3>
+            <p>This order ticket has expired after the 5-hour limit and is no longer valid for counter pick-up.</p>
+          </div>
+          <div id="ticket-overlay-redeemed" class="ticket-overlay redeemed" style="display: none;">
+            <i class="fas fa-check-circle"></i>
+            <h3>ORDER REDEEMED</h3>
+            <p>This ticket has been scanned and items have been issued by counter staff.</p>
+          </div>
+          <div class="ticket-header">
+            <h4>N Cafe Ticket</h4>
+            <p>Confirmed Booking</p>
+          </div>
+          <div class="ticket-details">
+            <div class="ticket-row">
+              <span>Token ID</span>
+              <strong id="ticket-id" style="color: var(--text-main);">NC-12345678</strong>
+            </div>
+            <div class="ticket-row">
+              <span>Customer</span>
+              <strong id="ticket-cust-name" style="color: var(--text-main);">Customer Name</strong>
+            </div>
+            <div class="ticket-row">
+              <span>Phone</span>
+              <span id="ticket-cust-phone">9876543210</span>
+            </div>
+            <div class="ticket-row">
+              <span>Purchased At</span>
+              <span id="ticket-time">13/06/2026 12:00 AM</span>
+            </div>
+
+            <!-- Purchased items -->
+            <div class="ticket-items">
+              <div id="ticket-items-list">
+                <!-- JS builds items rows -->
+              </div>
+              <div style="margin-top: 0.5rem; padding-top: 0.5rem;">
+                <div class="ticket-row">
+                  <span>Subtotal</span>
+                  <span id="ticket-subtotal">₹0</span>
+                </div>
+                <div class="ticket-row">
+                  <span>CGST/SGST (5%)</span>
+                  <span id="ticket-tax">₹0</span>
+                </div>
+                <div class="ticket-row" style="font-size: 1rem; font-weight: 700; color: var(--text-main);">
+                  <span>Total Amount Paid</span>
+                  <span id="ticket-total" style="color: var(--accent);">₹0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Barcode/QR Generation Display -->
+          <div class="ticket-barcode-section">
+            <div class="barcode-svg-container" style="background: white; padding: 1.25rem; border-radius: 16px;">
+              <canvas id="qr-canvas" width="200" height="200"></canvas>
+            </div>
+            <div class="barcode-number" id="barcode-num-text" style="font-size: 0.75rem; word-break: break-all; max-width: 350px; margin: 0.5rem auto; letter-spacing: 0.5px;">NC-00000000</div>
+            <div>
+              <span class="one-time-badge"><i class="fas fa-shield-alt"></i> One-Time Use Only</span>
+            </div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem; padding: 0 1rem;">
+              Present this barcode at the counter. The scanner operator will scan this barcode on your mobile and issue a printed bill receipt with your food.
+            </p>
+            <div class="mt-3" style="display: flex; justify-content: center; gap: 0.5rem;">
+              <button onclick="AppRouter.navigateTo('home')" class="btn-sm btn-sm-primary" style="padding: 0.5rem 1rem;">
+                <i class="fas fa-arrow-left"></i> Back to Menu
+              </button>
+              <!-- Download Receipt button (NEW) -->
+              <button id="btn-download-ticket" class="btn-sm btn-sm-accent" style="padding: 0.5rem 1rem;">
+                <i class="fas fa-file-download"></i> Download Bill (.txt)
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+
+
+  <!-- N PAY SIMULATOR OTP SMS VERIFICATION OVERLAY -->
+  <div class="otp-popup-overlay" id="otp-modal-overlay">
+    <div class="otp-card">
+      <h4>Verification Required</h4>
+      <p style="margin-bottom: 0.75rem;">A 2-Factor Authentication code has been dispatched to your phone.</p>
+      
+      <!-- Simulated SMS push notify display -->
+      <div class="otp-sms-sim">
+        <strong style="color: var(--accent);"><i class="fas fa-sms"></i> SMS Sandbox:</strong><br>
+        Your N Pay verification code is <strong style="font-family: monospace; font-size: 0.95rem; color: #fff;" id="simulated-otp-code">482910</strong>. Valid for 5 minutes.
+      </div>
+
+      <div class="otp-inputs">
+        <input type="text" class="otp-field" maxlength="1">
+        <input type="text" class="otp-field" maxlength="1">
+        <input type="text" class="otp-field" maxlength="1">
+        <input type="text" class="otp-field" maxlength="1">
+        <input type="text" class="otp-field" maxlength="1">
+        <input type="text" class="otp-field" maxlength="1">
+      </div>
+
+      <div class="flex gap-1">
+        <button type="button" class="btn-popup btn-popup-secondary" style="padding: 0.6rem;" id="btn-otp-cancel">Cancel</button>
+        <button type="button" class="btn-popup btn-popup-primary" style="padding: 0.6rem;" id="btn-otp-submit">Verify Payment</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart Drawer Modal -->
+  <div class="cart-backdrop" id="cart-backdrop"></div>
+  <div class="cart-drawer" id="cart-drawer">
+    <div class="cart-drawer-header">
+      <h3>Your Canteen Cart</h3>
+      <button class="close-cart-btn" id="cart-close">&times;</button>
+    </div>
+    
+    <div class="cart-items-list" id="cart-items-list">
+      <!-- Cart items populated by JS -->
+    </div>
+    
+    <div class="cart-drawer-footer">
+      <div class="cart-totals-row">
+        <span>Subtotal</span>
+        <span id="cart-subtotal">₹0</span>
+      </div>
+      <div class="cart-totals-row">
+        <span>Canteen Tax (5% GST)</span>
+        <span id="cart-tax">₹0</span>
+      </div>
+      <div class="cart-totals-row grand-total">
+        <span>Total Amount</span>
+        <span id="cart-total">₹0</span>
+      </div>
+      <button class="checkout-btn" id="cart-checkout-btn">
+        Proceed to Checkout <i class="fas fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer Section -->
+  <footer>
+    <p>&copy; 2026 <span>N Cafe</span>. Powered by Misty Hills Canteen Automated POS Systems. 
+      <a href="/admin" class="staff-portal-lnk" style="margin-left: 0.5rem;"><i class="fas fa-lock"></i> Owner Admin</a> | <a href="/scanner" class="staff-portal-lnk"><i class="fas fa-barcode"></i> Cashier Scanner</a>
+    </p>
+    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Canteen Hours: 7:00 AM - 9:00 PM | Estd. 1952</p>
+  </footer>
+
+  <!-- CUSTOMER TICKET RETRIEVAL MODAL (NEW) -->
+  <div class="passcode-backdrop" id="ticket-retrieval-gate">
+    <div class="passcode-card" style="width: 360px; max-height: 90vh; overflow-y: auto;">
+      <h3>My Tickets / Bill Finder</h3>
+      <p style="font-size: 0.8rem; margin-bottom: 1.25rem; color: var(--text-muted);">Retrieve your unused tickets for counter redemption.</p>
+      
+      <form id="retrieval-form">
+        <div class="form-group" style="text-align: left; margin-bottom: 1rem;">
+          <label for="cust-retrieval-name" style="font-size: 0.75rem;">Your Full Name</label>
+          <input type="text" id="cust-retrieval-name" placeholder="Enter name used at checkout" required style="width: 100%; padding: 0.8rem 1rem; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-dark); color: #fff; outline: none; font-family: var(--font-body);">
+        </div>
+        <div class="form-group" style="text-align: left; margin-bottom: 1.5rem;">
+          <label for="cust-retrieval-passkey" style="font-size: 0.75rem;">Your Pass Key (4-digit PIN)</label>
+          <input type="password" id="cust-retrieval-passkey" placeholder="Enter 4-digit PIN" pattern="[0-9]{4}" maxlength="4" required style="width: 100%; padding: 0.8rem 1rem; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-dark); color: #fff; outline: none; font-family: var(--font-body);">
+        </div>
+        <div class="flex gap-1">
+          <button type="button" class="btn-popup btn-popup-secondary" onclick="AppRouter.closeTicketRetrievalGate()" style="padding: 0.75rem;">Cancel</button>
+          <button type="submit" class="btn-popup btn-popup-primary" style="padding: 0.75rem; background: var(--accent); color: var(--bg-dark);">Find Tickets</button>
+        </div>
+      </form>
+
+      <!-- Results panel inside modal -->
+      <div id="retrieval-results-panel" style="display: none; width: 100%; border-top: 1px dashed var(--border-dark); margin-top: 1.25rem; padding-top: 1rem;">
+        <h4 style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase;">Unused Tickets Found</h4>
+        <div id="retrieval-results" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 150px; overflow-y: auto;">
+          <!-- JS populates found tickets -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEDGER COLUMN SELECTOR MODAL (NEW) -->
+  <div class="passcode-backdrop" id="ledger-column-modal">
+    <div class="passcode-card" style="width: 360px;">
+      <h3>CSV Column Selector</h3>
+      <p style="font-size: 0.8rem; margin-bottom: 1.25rem; color: var(--text-muted);">Choose the columns to include in your Excel/CSV download.</p>
+      
+      <form id="ledger-column-form" onsubmit="AppRouter.submitColumnExport(event)">
+        <div class="column-options-list" style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%; margin-bottom: 1.5rem; text-align: left;">
+          <label style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="col-export-id" checked style="width: 18px; height: 18px; accent-color: var(--accent);"> Transaction ID
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="col-export-date" checked style="width: 18px; height: 18px; accent-color: var(--accent);"> Date/Time
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="col-export-title" checked style="width: 18px; height: 18px; accent-color: var(--accent);"> Title
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="col-export-type" checked style="width: 18px; height: 18px; accent-color: var(--accent);"> Type
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="col-export-value" checked style="width: 18px; height: 18px; accent-color: var(--accent);"> Value (INR)
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="col-export-details" checked style="width: 18px; height: 18px; accent-color: var(--accent);"> Details
+          </label>
+        </div>
+        
+        <div class="flex gap-1">
+          <button type="button" class="btn-popup btn-popup-secondary" onclick="AppRouter.closeColumnModal()" style="padding: 0.75rem;">Cancel</button>
+          <button type="submit" class="btn-popup btn-popup-primary" style="padding: 0.75rem; background: var(--accent); color: var(--bg-dark);"><i class="fas fa-file-download"></i> Download CSV</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Google OAuth Client Library (Identity Services) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- App Logic Script -->
+  <script src="customer.js"></script>
+</body>
+</html>

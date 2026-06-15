@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N Cafe - Admin Dashboard</title>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Style Sheet -->
+  <link rel="stylesheet" href="style.css">
+  <!-- QR Code Generator Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+</head>
+<body style="background: var(--bg-dark); color: var(--text-main);">
+
+  <!-- ==================== ADMIN LOGIN GATE ==================== -->
+  <div class="passcode-backdrop active" id="admin-login-gate">
+    <div class="passcode-card" id="login-modal-card" style="width: 380px;">
+      <div class="logo-container" style="justify-content: center; margin-bottom: 1.5rem;">
+        <div class="logo-icon">N</div>
+        <div class="logo-text" style="text-align: left;">
+          <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin: 0;">N <span>Cafe</span></h2>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Misty Hills Kitchen</p>
+        </div>
+      </div>
+      <h3>Admin Login Portal</h3>
+      <p style="margin-bottom: 1.5rem; font-size: 0.8rem; color: var(--text-muted);">Type your administrator password to unlock the dashboard</p>
+      
+      <form id="admin-login-form">
+        <div class="form-group" style="text-align: left; margin-bottom: 1.5rem;">
+          <label for="admin-login-password" style="font-size: 0.75rem; color: var(--text-muted);">Dashboard Password</label>
+          <input type="password" id="admin-login-password" placeholder="Enter password" required style="padding: 0.6rem; border-radius: 8px;">
+        </div>
+        <button type="submit" class="checkout-btn w-full" style="padding: 0.75rem; background: var(--accent); color: var(--bg-dark); font-weight: 700;">
+          <i class="fas fa-lock-open"></i> Unlock Dashboard
+        </button>
+        <div style="text-align: center; margin-top: 1rem;">
+          <a href="/" style="color: var(--text-muted); font-size: 0.8rem; text-decoration: none; font-weight: 600; transition: var(--transition);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+            <i class="fas fa-arrow-left"></i> Return to Customer Portal
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN DASHBOARD CONTAINER ==================== -->
+  <main class="app-body" id="admin-dashboard-container" style="display: none; padding: 1.5rem; max-width: 1200px; margin: 0 auto;">
+    
+    <!-- Top Header Navigation -->
+    <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-dark); padding-bottom: 1rem; margin-bottom: 1.5rem; background: transparent; box-shadow: none;">
+      <div class="logo-container">
+        <div class="logo-icon">N</div>
+        <div class="logo-text">
+          <h1>N <span>Cafe</span></h1>
+          <p>Admin Control Dashboard</p>
+        </div>
+      </div>
+      <button class="nav-btn logout-btn" id="btn-admin-logout" style="background: rgba(234, 67, 53, 0.1); color: #ea4335; border: 1px solid rgba(234, 67, 53, 0.2); padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600;">
+        <i class="fas fa-sign-out-alt"></i> Exit Dashboard
+      </button>
+    </header>
+
+    <!-- Admin 5 Parts Navigation Tabs -->
+    <div class="admin-sections-nav" style="margin-bottom: 1.5rem;">
+      <button class="admin-tab-btn active" data-tab="1" id="btn-admin-tab-1">
+        <i class="fas fa-tachometer-alt"></i> Part 1: Dashboard Analytics
+      </button>
+      <button class="admin-tab-btn" data-tab="5" id="btn-admin-tab-5">
+        <i class="fas fa-cash-register"></i> Part 5: Walk-In POS Counter
+      </button>
+      <button class="admin-tab-btn" data-tab="2" id="btn-admin-tab-2">
+        <i class="fas fa-hamburger"></i> Part 2: Food Menu & Sales Report
+      </button>
+      <button class="admin-tab-btn" data-tab="3" id="btn-admin-tab-3">
+        <i class="fas fa-boxes"></i> Part 3: Raw Materials & Inventory
+      </button>
+      <button class="admin-tab-btn" data-tab="4" id="btn-admin-tab-4">
+        <i class="fas fa-coins"></i> Part 4: Cash Ledger & Bank Settings
+      </button>
+    </div>
+
+    <!-- PART 1: Dashboard Analytics -->
+    <div class="admin-tab-content active" id="admin-tab-1">
+      <!-- Metrics bar -->
+      <div class="admin-grid" style="margin-bottom: 1.5rem;">
+        <div class="admin-card" style="padding: 1rem 1.25rem;">
+          <div class="admin-card-header" style="font-size: 0.75rem;">
+            <span>Total Sales Revenue</span>
+            <i class="fas fa-wallet text-green"></i>
+          </div>
+          <div class="admin-card-val income" id="tab1-sales-val" style="font-size: 1.6rem;">₹0</div>
+        </div>
+        <div class="admin-card" style="padding: 1rem 1.25rem;">
+          <div class="admin-card-header" style="font-size: 0.75rem;">
+            <span>Total Raw Purchases</span>
+            <i class="fas fa-shopping-basket text-danger"></i>
+          </div>
+          <div class="admin-card-val expense" id="tab1-expenses-val" style="font-size: 1.6rem;">₹0</div>
+        </div>
+        <div class="admin-card" style="padding: 1rem 1.25rem;">
+          <div class="admin-card-header" style="font-size: 0.75rem;">
+            <span>Net Profit Margin</span>
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <div class="admin-card-val" id="tab1-profit-val" style="font-size: 1.6rem;">₹0</div>
+        </div>
+      </div>
+
+      <!-- Order count metrics bar -->
+      <div class="admin-grid" style="margin-bottom: 1.5rem;">
+        <div class="admin-card" style="padding: 1rem 1.25rem; background: rgba(37, 99, 235, 0.04); border: 1px solid rgba(37, 99, 235, 0.12);">
+          <div class="admin-card-header" style="font-size: 0.75rem;">
+            <span>Total Persons Billed</span>
+            <i class="fas fa-users" style="color: #2563eb;"></i>
+          </div>
+          <div class="admin-card-val" id="tab1-total-billed-count" style="font-size: 1.6rem; color: #fff;">0</div>
+        </div>
+        <div class="admin-card" style="padding: 1rem 1.25rem; background: rgba(5, 150, 105, 0.04); border: 1px solid rgba(5, 150, 105, 0.12);">
+          <div class="admin-card-header" style="font-size: 0.75rem;">
+            <span>Total Scanned QR (Issued)</span>
+            <i class="fas fa-qrcode" style="color: #059669;"></i>
+          </div>
+          <div class="admin-card-val" id="tab1-scanned-count" style="font-size: 1.6rem; color: #fff;">0</div>
+        </div>
+        <div class="admin-card" style="padding: 1rem 1.25rem; background: rgba(217, 119, 6, 0.04); border: 1px solid rgba(217, 119, 6, 0.12);">
+          <div class="admin-card-header" style="font-size: 0.75rem;">
+            <span>Pending Balance Orders</span>
+            <i class="fas fa-clock" style="color: #d97706;"></i>
+          </div>
+          <div class="admin-card-val" id="tab1-pending-count" style="font-size: 1.6rem; color: #ffb703;">0</div>
+        </div>
+      </div>
+
+      <div class="admin-flex-layout">
+        <!-- Left Panel: Analytics Status Overview -->
+        <div class="admin-panel" style="flex: 1.2; display: flex; flex-direction: column; gap: 1rem;">
+          <h4 style="color: var(--text-green);">
+            <i class="fas fa-store"></i> Nilgiri Hills Kitchen Status
+          </h4>
+          <p style="font-size: 0.9rem; line-height: 1.6; color: var(--text-main);">
+            Welcome back to the N Cafe owner console. This dashboard tracks real-time sales transactions, raw materials cost invoice logs, and profit margins.
+          </p>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-dark); border-radius: 12px; padding: 1.25rem; margin-top: 0.5rem; border: 1px solid var(--border-dark);">
+            <h5 style="margin-bottom: 0.5rem; color: var(--accent);"><i class="fas fa-info-circle"></i> POS Counter Operations</h5>
+            <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin: 0;">
+              To run walk-in order entries and process payments, open the dedicated **Part 5: Walk-In POS Counter** tab. It features a streamlined interface with cash drawers, live stock integration, and instant UPI QR payments on-screen.
+            </p>
+          </div>
+        </div>
+
+        <!-- Right Panel: Alerts -->
+        <div class="admin-panel" style="flex: 1; display: flex; flex-direction: column; gap: 1rem;">
+          <h4><i class="fas fa-bell" style="color: var(--accent);"></i> Daily Inventory Stock Alerts</h4>
+          <div id="dashboard-stock-alerts-new">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PART 5: Walk-In POS Counter -->
+    <div class="admin-tab-content" id="admin-tab-5" style="display: none;">
+      <div class="pos-layout">
+        <!-- Left Panel: POS Counter Billing -->
+        <div class="admin-panel" style="display: flex; flex-direction: column; gap: 1rem; flex: 1.5;">
+          <h4 style="color: var(--text-green);">
+            <i class="fas fa-cash-register"></i> Walk-In Billing Counter
+          </h4>
+          
+          <div class="flex gap-1 mb-3">
+            <div style="flex: 1.2;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Available POS Menu</label>
+              <div class="pos-catalog" id="pos-food-catalog" style="margin-top: 0.25rem;">
+                <!-- Injected by JS -->
+              </div>
+            </div>
+
+            <div style="flex: 1; border-left: 1px solid var(--border-dark); padding-left: 1rem; display: flex; flex-direction: column;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: bold; text-transform: uppercase; margin-bottom: 0.25rem;">Draft Bill Cart</label>
+              <div class="pos-cart-list" id="pos-cart-list">
+                <!-- Injected by JS -->
+              </div>
+
+              <div style="border-top: 1px dashed var(--border-dark); padding-top: 0.5rem; margin-top: auto; font-size: 0.8rem;">
+                <div class="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span id="pos-subtotal">₹0</span>
+                </div>
+                <div class="flex justify-between" style="margin-top: 0.2rem;">
+                  <span>GST (5%):</span>
+                  <span id="pos-tax">₹0</span>
+                </div>
+                <div class="flex justify-between" style="font-size: 1rem; font-weight: 700; color: var(--accent); margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid rgba(255,255,255,0.05);">
+                  <span>Grand Total:</span>
+                  <span id="pos-total">₹0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Customer particulars -->
+          <form id="pos-billing-form">
+            <div class="settings-group">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="pos-cust-name" style="font-size: 0.75rem;">Guest Name (Optional)</label>
+                <input type="text" id="pos-cust-name" placeholder="Walk-in Customer" style="padding: 0.5rem; font-size: 0.8rem;">
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="pos-cust-phone" style="font-size: 0.75rem;">Phone Number (Optional)</label>
+                <input type="tel" id="pos-cust-phone" placeholder="Phone" style="padding: 0.5rem; font-size: 0.8rem;">
+              </div>
+            </div>
+            <div class="flex gap-1" style="margin-top: 1rem;">
+              <button type="button" class="btn-popup btn-popup-secondary" id="btn-pos-clear-cart" style="padding: 0.75rem; border-radius: 12px; font-weight: bold; font-size: 1rem; border: none; cursor: pointer; flex: 1;">
+                <i class="fas fa-trash-alt"></i> Clear Cart
+              </button>
+              <button type="submit" class="checkout-btn" id="btn-pos-submit" style="background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: var(--bg-dark); padding: 0.75rem; border-radius: 12px; font-weight: bold; font-size: 1rem; border: none; cursor: pointer; flex: 1.5; margin-top: 0;" disabled>
+                <i class="fas fa-arrow-right"></i> Proceed to Payment Options
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- PART 2: Food Menu & Sales Report -->
+    <div class="admin-tab-content" id="admin-tab-2" style="display: none;">
+      <div class="admin-flex-layout">
+        <!-- Left Panel: Menu register and list -->
+        <div class="admin-panel" style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div>
+            <h4><i class="fas fa-edit" style="color: var(--accent);"></i> Daily Food Quantities</h4>
+            <div class="admin-table-wrapper" style="max-height: 300px;">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Img</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th>Today's Stock</th>
+                    <th>Delete</th>
+                  </tr>
+                </thead>
+                <tbody id="tab2-menu-tbody">
+                  <!-- JS inserts menu list -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h4><i class="fas fa-plus-circle" style="color: var(--accent);"></i> Register New Canteen Food</h4>
+            <form id="tab2-add-food-form">
+              <div class="settings-group">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="tab2-add-name">Food Name</label>
+                  <input type="text" id="tab2-add-name" placeholder="e.g. Onion Uttapam" required style="padding: 0.5rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="tab2-add-price">Price (₹)</label>
+                  <input type="number" id="tab2-add-price" placeholder="Price" min="0" required style="padding: 0.5rem;">
+                </div>
+              </div>
+              <div class="settings-group">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="tab2-add-stock">Initial Stock Today</label>
+                  <input type="number" id="tab2-add-stock" placeholder="Initial stock" min="0" required style="padding: 0.5rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="tab2-add-category">Category</label>
+                  <select id="tab2-add-category" required style="padding: 0.5rem;">
+                    <option value="Breakfast">Breakfast</option>
+                    <option value="Lunch">Lunch</option>
+                    <option value="Dinner">Dinner</option>
+                    <option value="Snacks">Snacks & Combos</option>
+                    <option value="Beverages">Beverages</option>
+                  </select>
+                </div>
+              </div>
+              <div class="settings-group">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="tab2-add-isveg">Dietary Type</label>
+                  <select id="tab2-add-isveg" required style="padding: 0.5rem;">
+                    <option value="Veg">Veg</option>
+                    <option value="Non-Veg">Non-Veg</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="tab2-add-image">Thumbnail Image</label>
+                  <select id="tab2-add-image" required style="padding: 0.5rem;">
+                    <option value="assets/masala_dosa.png">Dosa Thumbnail</option>
+                    <option value="assets/filter_coffee.png">Coffee Thumbnail</option>
+                    <option value="assets/vada_combo.png">Tea & Vada Thumbnail</option>
+                    <option value="assets/idli_sambar.png">Idli Sambar Thumbnail</option>
+                    <option value="assets/south_indian_meals.png">Meals (Lunch) Thumbnail</option>
+                    <option value="assets/rava_dosa.png">Rava Dosa (Dinner) Thumbnail</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label for="tab2-add-desc">Menu Description</label>
+                <input type="text" id="tab2-add-desc" placeholder="Brief details" required style="padding: 0.5rem;">
+              </div>
+              <button type="submit" class="btn-sm btn-sm-accent w-full" style="padding: 0.6rem;">
+                Add Food to Menu
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right Panel: Total Food Business Sales Report -->
+        <div class="admin-panel" style="display: flex; flex-direction: column; gap: 1rem;">
+          <h4><i class="fas fa-chart-pie" style="color: var(--accent);"></i> Total Food Business Sales</h4>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">Real-time list showing customer orders, items purchased, and details.</p>
+          
+          <!-- Filters for Food Business Report -->
+          <div class="report-filters" style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem; background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 10px; border: 1px solid var(--border-dark);">
+            <div style="flex: 1; min-width: 120px;">
+              <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Food Item</label>
+              <select id="report-filter-item" style="width: 100%; padding: 0.4rem; font-size: 0.8rem; background: var(--bg-dark); border: 1px solid var(--border-dark); color: #fff; border-radius: 6px; outline: none; cursor: pointer;">
+                <option value="All">All Items</option>
+              </select>
+            </div>
+            <div style="flex: 1; min-width: 120px;">
+              <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Date</label>
+              <input type="date" id="report-filter-date" style="width: 100%; padding: 0.4rem; font-size: 0.8rem; background: var(--bg-dark); border: 1px solid var(--border-dark); color: #fff; border-radius: 6px; outline: none; cursor: pointer;">
+            </div>
+            <div style="flex: 1; min-width: 120px;">
+              <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Min Amount (₹)</label>
+              <input type="number" id="report-filter-amount" placeholder="e.g. 500" style="width: 100%; padding: 0.4rem; font-size: 0.8rem; background: var(--bg-dark); border: 1px solid var(--border-dark); color: #fff; border-radius: 6px; outline: none;">
+            </div>
+          </div>
+
+          <div class="admin-table-wrapper" style="max-height: 580px;">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Customer Details</th>
+                  <th>Date/Time</th>
+                  <th>Items Purchased</th>
+                  <th>Amt</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tab2-foodbusiness-tbody">
+                <!-- JS inserts food business table rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PART 3: Raw Materials & Inventory -->
+    <div class="admin-tab-content" id="admin-tab-3" style="display: none;">
+      <div class="admin-flex-layout">
+        <!-- Left Column: Forms to Restock & Usage -->
+        <div class="admin-panel" style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <div>
+            <h4 style="border-bottom: 1px solid var(--border-dark); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+              <i class="fas fa-shopping-basket" style="color: var(--success); margin-right: 0.5rem;"></i> Log Material Purchase (Expense)
+            </h4>
+            <form id="tab1-purchase-form">
+              <div class="form-group">
+                <label for="tab1-pur-ing-id">Select Ingredient</label>
+                <select id="tab1-pur-ing-id" required>
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+              <div class="flex gap-1">
+                <div class="form-group" style="flex: 1;">
+                  <label for="tab1-pur-qty">Quantity Restocked</label>
+                  <input type="number" step="0.1" id="tab1-pur-qty" placeholder="Amount" min="0.1" required>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                  <label for="tab1-pur-cost">Total Cash Cost (₹)</label>
+                  <input type="number" id="tab1-pur-cost" placeholder="Cost in ₹" min="1" required>
+                </div>
+              </div>
+              <button type="submit" class="btn-sm btn-sm-primary w-full" style="padding: 0.6rem;">
+                Register Purchase Invoice
+              </button>
+            </form>
+          </div>
+
+          <div>
+            <h4 style="border-bottom: 1px solid var(--border-dark); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+              <i class="fas fa-utensils" style="color: var(--danger); margin-right: 0.5rem;"></i> Log Kitchen Ingredient Usage
+            </h4>
+            <form id="tab1-usage-form">
+              <div class="form-group">
+                <label for="tab1-use-ing-id">Select Ingredient</label>
+                <select id="tab1-use-ing-id" required>
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tab1-use-qty">Quantity Utilized in Kitchen</label>
+                <input type="number" step="0.1" id="tab1-use-qty" placeholder="e.g. 5kg for Dosa Batter" min="0.1" required>
+              </div>
+              <button type="submit" class="btn-sm btn-sm-accent w-full" style="padding: 0.6rem; background: var(--accent); color: var(--bg-dark);">
+                Log Kitchen Usage
+              </button>
+            </form>
+          </div>
+
+          <div style="border-top: 1px dashed var(--border-dark); margin-top: 1.5rem; padding-top: 1.5rem;">
+            <h4 style="border-bottom: 1px solid var(--border-dark); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+              <i class="fas fa-plus-circle" style="color: var(--text-green); margin-right: 0.5rem;"></i> Register New Raw Material
+            </h4>
+            <form id="tab1-add-ing-form">
+              <div class="form-group">
+                <label for="tab1-add-ing-name">Material Name</label>
+                <input type="text" id="tab1-add-ing-name" placeholder="e.g. Milk, Butter, Ghee" required style="padding: 0.5rem;">
+              </div>
+              <div class="flex gap-1">
+                <div class="form-group" style="flex: 1;">
+                  <label for="tab1-add-ing-unit">Unit</label>
+                  <select id="tab1-add-ing-unit" required style="padding: 0.5rem; width: 100%;">
+                    <option value="kg">kg</option>
+                    <option value="Litre">Litre</option>
+                    <option value="pcs">pcs</option>
+                    <option value="g">g</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                  <label for="tab1-add-ing-stock">Initial Stock</label>
+                  <input type="number" step="0.1" id="tab1-add-ing-stock" placeholder="0.0" min="0" value="0" required style="padding: 0.5rem; width: 100%;">
+                </div>
+              </div>
+              <button type="submit" class="btn-sm btn-sm-primary w-full" style="padding: 0.6rem;">
+                Register Raw Material
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right Column: Complete Inventory List -->
+        <div class="admin-panel">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-dark); padding-bottom: 0.5rem; margin-bottom: 1.25rem;">
+            <h4 style="border: none; padding: 0; margin: 0;"><i class="fas fa-warehouse" style="color: var(--accent);"></i> Raw Material Stock Inventory</h4>
+            <button type="button" class="btn-export-csv" id="btn-export-inventory">
+              <i class="fas fa-file-csv"></i> Download Inventory CSV
+            </button>
+          </div>
+
+          <div class="admin-table-wrapper" style="max-height: 500px;">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Material Name</th>
+                  <th>Material ID</th>
+                  <th>Stock Level</th>
+                  <th>Last Purchased</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tab3-ingredients-tbody">
+                <!-- JS builds ingredient list -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PART 4: Cash Ledger & Bank Settings -->
+    <div class="admin-tab-content" id="admin-tab-4" style="display: none;">
+      <div class="admin-flex-layout">
+        <!-- Left Column: Settings and Sync -->
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+          
+          <!-- Bank Account Configurations -->
+          <div class="admin-panel">
+            <h4><i class="fas fa-university" style="color: var(--accent);"></i> N Cafe Account Settings</h4>
+            <form id="tab3-account-form">
+              <div class="settings-group">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="acc-name-input">Merchant / Account Name</label>
+                  <input type="text" id="acc-name-input" placeholder="e.g. N Cafe Services" required style="padding: 0.5rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="acc-upi-input">Merchant UPI ID</label>
+                  <input type="text" id="acc-upi-input" placeholder="e.g. ncafe@okaxis" required style="padding: 0.5rem;">
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label for="acc-bank-input">Bank Name</label>
+                <input type="text" id="acc-bank-input" placeholder="Bank Name" required style="padding: 0.5rem;">
+              </div>
+              <div class="settings-group">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="acc-no-input">Account Number</label>
+                  <input type="text" id="acc-no-input" placeholder="A/C Number" required style="padding: 0.5rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                  <label for="acc-ifsc-input">Bank IFSC Code</label>
+                  <input type="text" id="acc-ifsc-input" placeholder="IFSC" required style="padding: 0.5rem;">
+                </div>
+              </div>
+              <button type="submit" class="btn-sm btn-sm-accent w-full" style="padding: 0.6rem; margin-top: 0.5rem;">
+                Save Account Profiles (Sync Checkout QR)
+              </button>
+            </form>
+          </div>
+
+          <!-- Google Drive Sync Panel -->
+          <div class="admin-panel">
+            <h4><i class="fab fa-google-drive" style="color: #34A853;"></i> Google Drive Sync</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+              Use Google Drive as your central database. Sync state across devices or back up your data.
+            </p>
+
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <label for="gdrive-client-id">Google OAuth Client ID</label>
+              <input type="text" id="gdrive-client-id" placeholder="Paste Client ID from Google Cloud Console" style="padding: 0.5rem; font-size: 0.8rem;">
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.8rem; color: var(--text-main);">Status:</span>
+                <span id="gdrive-sync-status" style="font-size: 0.8rem; font-weight: bold; color: var(--text-muted);">Disconnected</span>
+              </div>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; cursor: pointer; color: var(--text-main);">
+                <input type="checkbox" id="gdrive-auto-sync" style="width: 16px; height: 16px; accent-color: var(--accent);"> Auto-Sync changes in background
+              </label>
+            </div>
+
+            <div class="flex gap-1" style="margin-bottom: 1.25rem;">
+              <button type="button" id="btn-gdrive-connect" class="btn-sm" style="flex: 1; padding: 0.5rem; background: #4285F4; color: #fff; border: none; font-size: 0.8rem;">
+                <i class="fab fa-google"></i> Connect Drive
+              </button>
+              <button type="button" id="btn-gdrive-sync" class="btn-sm btn-sm-accent" style="flex: 1; padding: 0.5rem; font-size: 0.8rem;" disabled>
+                <i class="fas fa-sync-alt"></i> Sync Now
+              </button>
+            </div>
+
+            <!-- Manual Backup Section -->
+            <div style="border-top: 1px dashed var(--border-dark); padding-top: 1rem; margin-top: 1rem;">
+              <h5 style="font-size: 0.8rem; color: var(--text-main); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">Manual Backup & Restore</h5>
+              <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Alternatively, export a raw `.json` snapshot of the database manually, or load an existing backup file.
+              </p>
+              <div class="flex gap-1">
+                <button type="button" class="btn-sm" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-dark); background: transparent; color: var(--text-main); font-size: 0.8rem;" id="btn-backup-db">
+                  <i class="fas fa-download"></i> Backup JSON
+                </button>
+                <label class="btn-sm" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-dark); background: transparent; color: var(--text-main); text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; font-size: 0.8rem;">
+                  <i class="fas fa-upload"></i> Restore JSON
+                  <input type="file" id="restore-db-file" accept=".json" style="display: none;">
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security Credentials Panel -->
+          <div class="admin-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="btn-toggle-credentials">
+              <h4 style="border: none; padding: 0; margin: 0; font-size: 0.95rem; font-weight: 600; text-transform: none; letter-spacing: 0;"><i class="fas fa-key" style="color: var(--accent); margin-right: 0.4rem;"></i> Security Credentials</h4>
+              <i class="fas fa-chevron-down" id="credentials-chevron" style="color: var(--text-muted); font-size: 0.85rem; transition: var(--transition);"></i>
+            </div>
+            
+            <form id="tab4-credentials-form" style="display: none; margin-top: 1.25rem;">
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label for="cred-current-pwd">Current Admin Password (Security Verification)</label>
+                <input type="password" id="cred-current-pwd" placeholder="Confirm current password to save changes" required style="padding: 0.5rem; font-size: 0.85rem;">
+              </div>
+              <div style="border-top: 1px dashed var(--border-dark); margin: 1rem 0; padding-top: 1rem;"></div>
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label for="cred-admin-pwd">New Admin Dashboard Password</label>
+                <input type="password" id="cred-admin-pwd" placeholder="Enter new admin password" required style="padding: 0.5rem; font-size: 0.85rem;">
+              </div>
+              <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="cred-scanner-pin">New Operator Scanner PIN (4 Digits)</label>
+                <input type="text" id="cred-scanner-pin" placeholder="Enter new 4-digit PIN" pattern="[0-9]{4}" maxlength="4" required style="padding: 0.5rem; font-size: 0.85rem;">
+              </div>
+              <button type="submit" class="btn-sm btn-sm-accent w-full" style="padding: 0.6rem;">
+                Update Security Credentials
+              </button>
+            </form>
+          </div>
+          <!-- Razorpay Payment Gateway Credentials Panel -->
+          <div class="admin-panel" style="margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="btn-toggle-razorpay">
+              <h4 style="border: none; padding: 0; margin: 0; font-size: 0.95rem; font-weight: 600; text-transform: none; letter-spacing: 0;"><i class="fas fa-credit-card" style="color: var(--accent); margin-right: 0.4rem;"></i> Razorpay Payment Gateway</h4>
+              <i class="fas fa-chevron-down" id="razorpay-chevron" style="color: var(--text-muted); font-size: 0.85rem; transition: var(--transition);"></i>
+            </div>
+            
+            <form id="tab4-razorpay-form" style="display: none; margin-top: 1.25rem;">
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label for="rzp-key-id">Razorpay Key ID</label>
+                <input type="text" id="rzp-key-id" placeholder="rzp_live_... or rzp_test_..." required style="padding: 0.5rem; font-size: 0.85rem;">
+              </div>
+              <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="rzp-key-secret">Razorpay Key Secret</label>
+                <input type="password" id="rzp-key-secret" placeholder="Enter Key Secret" required style="padding: 0.5rem; font-size: 0.85rem;">
+              </div>
+              <button type="submit" class="btn-sm btn-sm-accent w-full" style="padding: 0.6rem;">
+                Save Razorpay Credentials
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right Column: Ledger transactions logs -->
+        <div class="admin-panel">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-dark); padding-bottom: 0.5rem; margin-bottom: 1.25rem;">
+            <h4 style="border: none; padding: 0; margin: 0;"><i class="fas fa-file-invoice-dollar" style="color: var(--accent); margin-right: 0.4rem;"></i> Cash Ledger</h4>
+            <button type="button" class="btn-export-csv" id="btn-export-ledger">
+              <i class="fas fa-file-csv"></i> Export CSV
+            </button>
+          </div>
+
+          <div class="admin-table-wrapper" style="max-height: 500px;">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th style="width: 40px; text-align: center;"><input type="checkbox" id="ledger-select-all"></th>
+                  <th>Timestamp</th>
+                  <th>Detail Summary</th>
+                  <th>Type</th>
+                  <th>Value</th>
+                  <th style="text-align: center;">Modify</th>
+                </tr>
+              </thead>
+              <tbody id="tab3-transactions-tbody">
+                <!-- JS builds transaction ledger rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== POS COUNTER PAYMENT MODAL ==================== -->
+  <div class="passcode-backdrop" id="pos-payment-modal" style="display: none; align-items: center; justify-content: center; z-index: 1100;">
+    <div class="passcode-card" style="width: 420px; max-height: 90vh; overflow-y: auto;">
+      <h3 style="margin-bottom: 0.5rem;"><i class="fas fa-wallet" style="color: var(--accent); margin-right: 0.5rem;"></i> POS Billing Payment</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">Select the payment method to finalize the guest order invoice.</p>
+      
+      <!-- Amount display box -->
+      <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-dark); padding: 1.25rem; border-radius: 12px; margin-bottom: 1.5rem; text-align: center;">
+        <span style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: block;">Total Amount to Collect</span>
+        <strong style="font-size: 2.2rem; color: var(--accent); display: block; margin-top: 0.25rem;" id="pos-modal-amount">₹0</strong>
+      </div>
+
+      <!-- Step 1: Selector Options -->
+      <div id="pos-payment-selector">
+        <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+          <button type="button" class="checkout-btn" id="btn-pos-pay-cash" style="background: linear-gradient(135deg, var(--success), #059669); color: white; display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; border-radius: 12px; font-weight: bold; font-size: 1rem; border: none; cursor: pointer; transition: var(--transition);">
+            <i class="fas fa-money-bill-wave" style="font-size: 1.2rem;"></i> Pay via Cash (Counter)
+          </button>
+          
+          <button type="button" class="checkout-btn" id="btn-pos-pay-upi" style="background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: var(--bg-dark); display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; border-radius: 12px; font-weight: bold; font-size: 1rem; border: none; cursor: pointer; transition: var(--transition);">
+            <i class="fas fa-qrcode" style="font-size: 1.2rem;"></i> Pay via UPI QR Code Scan
+          </button>
+        </div>
+
+        <button type="button" class="btn-popup btn-popup-secondary" id="btn-pos-payment-cancel" style="width: 100%; padding: 0.75rem; border-radius: 8px; font-weight: 600;">
+          Cancel & Edit Bill
+        </button>
+      </div>
+
+      <!-- Step 2: UPI QR Code Screen (Hidden by default) -->
+      <div id="pos-payment-upi-screen" style="display: none; text-align: center;">
+        <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-main);">Scan QR to Pay Canteen Bill</h4>
+        
+        <div style="background: white; padding: 1.25rem; border-radius: 16px; display: inline-block; margin-bottom: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+          <canvas id="pos-upi-qr-canvas" width="200" height="200"></canvas>
+        </div>
+
+        <div style="font-size: 0.75rem; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 0.6rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: left; line-height: 1.4; border: 1px solid var(--border-dark);">
+          <strong>Payee Name:</strong> <span id="pos-modal-payee">N Cafe</span><br>
+          <strong>UPI ID/VPA:</strong> <span id="pos-modal-vpa" style="color: var(--accent); font-family: monospace;">--</span>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem;">
+          <button type="button" class="btn-popup btn-popup-secondary" id="btn-pos-upi-back" style="flex: 1; padding: 0.75rem;">
+            <i class="fas fa-arrow-left"></i> Back
+          </button>
+          <button type="button" class="btn-popup btn-popup-primary" id="btn-pos-upi-confirm" style="flex: 1.5; padding: 0.75rem; background: var(--success); color: white; border: none;">
+            <i class="fas fa-check-circle"></i> Confirm Payment Done
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Google Identity Client for sync background sync -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Admin Controller -->
+  <script src="admin.js"></script>
+</body>
+</html>

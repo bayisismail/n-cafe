@@ -1,0 +1,1140 @@
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 8000;
+const JWT_SECRET = process.env.JWT_SECRET || 'ncafe- Hills-Kitchen-Services-Secret-Key-2026!';
+const DB_PATH = path.join(__dirname, 'n_cafe.db');
+
+// Enable security headers, CORS, and JSON parsing
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled for simple visual template styling and libraries
+}));
+app.use(cors());
+app.use(express.json());
+
+// Serve static web pages
+app.use(express.static(path.join(__dirname)));
+
+// --- DATABASE INITIALIZATION & SCHEMA CREATION ---
+class DB {
+  constructor() {
+    this.isPostgres = false;
+    this.queue = Promise.resolve();
+
+    const dbUrl = process.env.DATABASE_URL;
+    if (dbUrl && (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://'))) {
+      try {
+        const { Client } = require('pg');
+        this.isPostgres = true;
+        this.pgClient = new Client({
+          connectionString: dbUrl,
+          ssl: {
+            rejectUnauthorized: false
+          }
+        });
+      } catch (err) {
+        console.error("PostgreSQL driver ('pg') failed to load. Defaulting to SQLite.", err);
+        this.isPostgres = false;
+        this.sqliteDb = new sqlite3.Database(DB_PATH);
+      }
+    } else {
+      this.sqliteDb = new sqlite3.Database(DB_PATH);
+    }
+  }
+
+  connect(callback) {
+    if (this.isPostgres) {
+      this.pgClient.connect((err) => {
+        if (err) {
+          console.error("Failed to connect to PostgreSQL:", err);
+          callback(err);
+        } else {
+          console.log("Connected to PostgreSQL database successfully.");
+          callback(null);
+        }
+      });
+    } else {
+      console.log("Connected to SQLite database at:", DB_PATH);
+      callback(null);
+    }
+  }
+
+  translateQuery(sql) {
+    if (!this.isPostgres) return sql;
+
+    let translated = sql;
+
+    // Translate SQLite UPSERT (INSERT OR REPLACE) to PostgreSQL ON CONFLICT DO UPDATE
+    if (translated.toUpperCase().includes('INSERT OR REPLACE INTO')) {
+      translated = translated.replace(/INSERT OR REPLACE INTO/i, 'INSERT INTO');
+      translated += ' ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value';
+    }
+
+    // Replace "?" placeholders with "$1", "$2", etc. for Postgres
+    let index = 1;
+    while (translated.includes('?')) {
+      translated = translated.replace('?', '$' + index);
+      index++;
+    }
+
+    return translated;
+  }
+
+  serialize(cb) {
+    if (this.isPostgres) {
+      cb();
+    } else {
+      this.sqliteDb.serialize(cb);
+    }
+  }
+
+  run(sql, params, cb) {
+    if (typeof params === 'function') {
+      cb = params;
+      params = [];
+    }
+    params = params || [];
+    const translatedSql = this.translateQuery(sql);
+
+    if (this.isPostgres) {
+      this.queue = this.queue.then(() => {
+        return new Promise((resolve) => {
+          this.pgClient.query(translatedSql, params, (err, res) => {
+            if (cb) cb(err);
+            resolve();
+          });
+        });
+      });
+    } else {
+      this.sqliteDb.run(sql, params, cb);
+    }
+  }
+
+  get(sql, params, cb) {
+    if (typeof params === 'function') {
+      cb = params;
+      params = [];
+    }
+    params = params || [];
+    const translatedSql = this.translateQuery(sql);
+
+    if (this.isPostgres) {
+      this.queue = this.queue.then(() => {
+        return new Promise((resolve) => {
+          this.pgClient.query(translatedSql, params, (err, res) => {
+            if (err) {
+              if (cb) cb(err);
+            } else {
+              if (cb) cb(null, res.rows ? res.rows[0] : null);
+            }
+            resolve();
+          });
+        });
+      });
+    } else {
+      this.sqliteDb.get(sql, params, cb);
+    }
+  }
+
+  all(sql, params, cb) {
+    if (typeof params === 'function') {
+      cb = params;
+      params = [];
+    }
+    params = params || [];
+    const translatedSql = this.translateQuery(sql);
+
+    if (this.isPostgres) {
+      this.queue = this.queue.then(() => {
+        return new Promise((resolve) => {
+          this.pgClient.query(translatedSql, params, (err, res) => {
+            if (err) {
+              if (cb) cb(err);
+            } else {
+              if (cb) cb(null, res.rows || []);
+            }
+            resolve();
+          });
+        });
+      });
+    } else {
+      this.sqliteDb.all(sql, params, cb);
+    }
+  }
+
+  prepare(sql) {
+    const translatedSql = this.translateQuery(sql);
+    const self = this;
+
+    if (this.isPostgres) {
+      return {
+        run(params, cb) {
+          self.pgClient.query(translatedSql, params, (err) => {
+            if (cb) cb(err);
+          });
+        },
+        finalize(cb) {
+          if (cb) cb();
+        }
+      };
+    } else {
+      const stmt = this.sqliteDb.prepare(sql);
+      return {
+        run(params, cb) {
+          stmt.run(params, cb);
+        },
+        finalize(cb) {
+          stmt.finalize(cb);
+        }
+      };
+    }
+  }
+}
+
+const db = new DB();
+
+db.connect((err) => {
+  if (err) {
+    console.error('Failed to initialize database connection:', err);
+  } else {
+    initializeDatabase();
+  }
+});
+
+function initializeDatabase() {
+  db.serialize(() => {
+    // 1. Food Items Table
+    db.run(`CREATE TABLE IF NOT EXISTS food_items (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      price REAL NOT NULL,
+      stock INTEGER NOT NULL,
+      category TEXT NOT NULL,
+      isveg TEXT NOT NULL,
+      image TEXT NOT NULL,
+      details TEXT
+    )`);
+
+    // 2. Bookings Table
+    db.run(`CREATE TABLE IF NOT EXISTS bookings (
+      id TEXT PRIMARY KEY,
+      customerName TEXT NOT NULL,
+      customerPhone TEXT NOT NULL,
+      passkey TEXT NOT NULL,
+      items TEXT NOT NULL, -- JSON string
+      totalAmount REAL NOT NULL,
+      paymentMethod TEXT NOT NULL,
+      paymentStatus TEXT NOT NULL,
+      bookingTime TEXT NOT NULL,
+      expiryTime TEXT NOT NULL,
+      status TEXT NOT NULL, -- pending, redeemed, expired
+      redeemedTime TEXT
+    )`);
+
+    // 3. Transactions (Cash Ledger) Table
+    db.run(`CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL, -- sale, purchase, expense
+      title TEXT NOT NULL,
+      amount REAL NOT NULL,
+      timestamp TEXT NOT NULL,
+      details TEXT
+    )`);
+
+    // 4. Ingredients Table
+    db.run(`CREATE TABLE IF NOT EXISTS ingredients (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      stock REAL NOT NULL,
+      unit TEXT NOT NULL,
+      lastPurchaseDate TEXT
+    )`);
+
+    // 5. Temporary Stock Locks Table (Note: BIGINT support for Postgres millisecond timestamps)
+    db.run("DROP TABLE IF EXISTS locks");
+    db.run(`CREATE TABLE IF NOT EXISTS locks (
+      id TEXT,
+      foodItemId TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      expiryTime BIGINT NOT NULL,
+      PRIMARY KEY (id, foodItemId)
+    )`);
+
+    // 6. Settings Table
+    db.run(`CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`);
+
+    // --- SEED INITIAL DATA IF EMPTY ---
+    seedDatabase();
+  });
+}
+
+function seedDatabase() {
+  db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'admin_password'", (err, row) => {
+    if (err) return console.error(err);
+    if (parseInt(row.count, 10) === 0) {
+      console.log('Seeding default security credentials and settings...');
+      const salt = bcrypt.genSaltSync(10);
+      const adminHash = bcrypt.hashSync('Admin@NCafeHills2026!', salt);
+      const scannerHash = bcrypt.hashSync('5678', salt);
+
+      db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_password', ?)", [adminHash]);
+      db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('scanner_pin', ?)", [scannerHash]);
+
+      const defaultAcc = {
+        name: 'N Cafe Hills Kitchen Services',
+        bank: 'State Bank of India',
+        accNo: '39485710293',
+        ifsc: 'SBIN0008472',
+        upiId: 'ncafe.canteen@okaxis'
+      };
+      db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('account_details', ?)", [JSON.stringify(defaultAcc)]);
+    }
+  });
+
+  db.serialize(() => {
+    const defaultFoods = [
+      ['FD-101', 'Masala Dosa Special', 80, 20, 'Breakfast', 'Veg', 'masala_dosa.png', 'Crispy dosa with potato filling served with sambar and coconut chutney.'],
+      ['FD-102', 'Idli Sambar (2 Pcs)', 50, 15, 'Breakfast', 'Veg', 'idli_sambar.png', 'Soft steamed rice cakes served with hot sambar and tomato chutney.'],
+      ['FD-103', 'Misty Hills Filter Coffee', 30, 40, 'Beverages', 'Veg', 'filter_coffee.png', 'Traditional South Indian frothy chicory blended coffee.'],
+      ['FD-104', 'Vada Sambar Combo', 60, 25, 'Breakfast', 'Veg', 'vada_combo.png', 'Crispy fried lentil donuts served with side sambar and dips.'],
+      ['FD-105', 'Nilgiri South Indian Meals', 120, 15, 'Lunch', 'Veg', 'south_indian_meals.png', 'Traditional South Indian mini meals with rice, sambar, rasam, poriyal, appalam, and curd.'],
+      ['FD-106', 'Steaming Hot Rava Dosa', 90, 15, 'Dinner', 'Veg', 'rava_dosa.png', 'Crispy semolina dosa spiced with black pepper, cumin, and green chillies.']
+    ];
+    defaultFoods.forEach(food => {
+      db.get("SELECT COUNT(*) as count FROM food_items WHERE id = ?", [food[0]], (err, checkRow) => {
+        if (!err && checkRow && parseInt(checkRow.count, 10) === 0) {
+          console.log(`Seeding default food item: ${food[1]}`);
+          db.run("INSERT INTO food_items (id, name, price, stock, category, isveg, image, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", food);
+        }
+      });
+    });
+  });
+
+  db.get("SELECT COUNT(*) as count FROM ingredients", (err, row) => {
+    if (err) return console.error(err);
+    if (parseInt(row.count, 10) === 0) {
+      console.log('Seeding default ingredients...');
+      const defaultIngs = [
+        ['ING-001', 'Rice Dosa Batter', 15.5, 'kg', new Date().toISOString()],
+        ['ING-002', 'Filter Coffee Beans', 5.0, 'kg', new Date().toISOString()],
+        ['ING-003', 'Sambhar Spices & Masala', 8.2, 'kg', new Date().toISOString()],
+        ['ING-004', 'Lentil Vada Batter', 10.0, 'kg', new Date().toISOString()]
+      ];
+      const stmt = db.prepare("INSERT INTO ingredients (id, name, stock, unit, lastPurchaseDate) VALUES (?, ?, ?, ?, ?)");
+      defaultIngs.forEach(ing => stmt.run(ing));
+      stmt.finalize();
+    }
+  });
+}
+
+// --- SECURE JWT AUTHENTICATION MIDDLEWARE ---
+function authenticateToken(allowedRoles = []) {
+  return (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ error: 'Access token required.' });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+      if (err) {
+        return res.status(403).json({ error: 'Token expired or invalid.' });
+      }
+      
+      if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+        return res.status(403).json({ error: 'Unauthorized role.' });
+      }
+
+      req.user = user;
+      next();
+    });
+  };
+}
+
+// --- BACKGROUND EXPIRED HOLDS CLEANUP ---
+setInterval(() => {
+  const now = Date.now();
+  db.run("DELETE FROM locks WHERE expiryTime < ?", [now], function(err) {
+    if (err) console.error("Error pruning expired locks:", err);
+  });
+}, 10000); // Clean up locks every 10 seconds
+
+// --- SECURE ROUTING & HTML SERVING ---
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+app.get('/scanner', (req, res) => {
+  res.sendFile(path.join(__dirname, 'scanner.html'));
+});
+
+// --- API AUTH ENDPOINTS ---
+
+// Admin Login
+app.post('/api/auth/login-admin', (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password required.' });
+  }
+
+  db.get("SELECT value FROM settings WHERE key = 'admin_password'", (err, row) => {
+    if (err || !row) {
+      return res.status(500).json({ error: 'Database error.' });
+    }
+    const match = bcrypt.compareSync(password, row.value);
+    if (match) {
+      const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '12h' });
+      res.json({ success: true, token });
+    } else {
+      res.status(401).json({ error: 'Incorrect Admin Password.' });
+    }
+  });
+});
+
+// Operator Login
+app.post('/api/auth/login-operator', (req, res) => {
+  const { pin } = req.body;
+  if (!pin) {
+    return res.status(400).json({ error: 'PIN required.' });
+  }
+
+  db.get("SELECT value FROM settings WHERE key = 'scanner_pin'", (err, row) => {
+    if (err || !row) {
+      return res.status(500).json({ error: 'Database error.' });
+    }
+    const match = bcrypt.compareSync(pin, row.value);
+    if (match) {
+      const token = jwt.sign({ role: 'operator' }, JWT_SECRET, { expiresIn: '12h' });
+      res.json({ success: true, token });
+    } else {
+      res.status(401).json({ error: 'Incorrect Operator PIN.' });
+    }
+  });
+});
+
+// Change Security Credentials (Admin auth required)
+app.post('/api/auth/change-credentials', authenticateToken(['admin']), (req, res) => {
+  const { currentPassword, password, pin } = req.body;
+  if (!currentPassword || !password || !pin) {
+    return res.status(400).json({ error: 'Current password, new password, and PIN are required.' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Admin password must be at least 6 characters.' });
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    return res.status(400).json({ error: 'Operator PIN must be exactly 4 digits.' });
+  }
+
+  // Verify current password first
+  db.get("SELECT value FROM settings WHERE key = 'admin_password'", (err, row) => {
+    if (err || !row) {
+      return res.status(500).json({ error: 'Database error.' });
+    }
+    const match = bcrypt.compareSync(currentPassword, row.value);
+    if (!match) {
+      return res.status(401).json({ error: 'Incorrect current Admin password (security key mismatch).' });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const passwordHash = bcrypt.hashSync(password, salt);
+    const pinHash = bcrypt.hashSync(pin, salt);
+
+    db.serialize(() => {
+      db.run("UPDATE settings SET value = ? WHERE key = 'admin_password'", [passwordHash]);
+      db.run("UPDATE settings SET value = ? WHERE key = 'scanner_pin'", [pinHash], (err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to update credentials.' });
+        }
+        res.json({ success: true, message: 'Security credentials updated successfully.' });
+      });
+    });
+  });
+});
+
+// --- API ACCOUNT SETTINGS ENDPOINTS ---
+
+// Get Settings (Public bank info + credentials metadata)
+app.get('/api/settings', (req, res) => {
+  db.get("SELECT value FROM settings WHERE key = 'account_details'", (err, row) => {
+    if (err || !row) {
+      return res.status(500).json({ error: 'Failed to retrieve settings.' });
+    }
+    res.json(JSON.parse(row.value));
+  });
+});
+
+// Save Account Details (Admin auth required)
+app.post('/api/settings', authenticateToken(['admin']), (req, res) => {
+  const { name, bank, accNo, ifsc, upiId } = req.body;
+  if (!name || !bank || !accNo || !ifsc || !upiId) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
+  const newAcc = { name, bank, accNo, ifsc, upiId };
+  db.run("UPDATE settings SET value = ? WHERE key = 'account_details'", [JSON.stringify(newAcc)], (err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to save account settings.' });
+    }
+    res.json({ success: true, message: 'Account details saved successfully.' });
+  });
+});
+
+// --- API CATALOG / FOOD ENDPOINTS ---
+
+// Get Food Catalog (Takes temporary locks into account)
+app.get('/api/food-items', (req, res) => {
+  db.all("SELECT * FROM food_items", (err, foods) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    const now = Date.now();
+    db.all("SELECT foodItemId, SUM(quantity) as lockedQty FROM locks WHERE expiryTime > ? GROUP BY foodItemId", [now], (err, locked) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      const lockMap = {};
+      locked.forEach(l => {
+        lockMap[l.foodItemId] = l.lockedQty;
+      });
+
+      const processed = foods.map(f => {
+        const lockedVal = lockMap[f.id] || 0;
+        return {
+          ...f,
+          availableStock: Math.max(0, f.stock - lockedVal)
+        };
+      });
+
+      res.json(processed);
+    });
+  });
+});
+
+// Add Food Item (Admin required)
+app.post('/api/food-items', authenticateToken(['admin']), (req, res) => {
+  const { id, name, price, stock, category, isveg, image, details } = req.body;
+  if (!id || !name || price == null || stock == null || !category || !isveg || !image) {
+    return res.status(400).json({ error: 'Invalid food payload.' });
+  }
+
+  db.run(
+    "INSERT INTO food_items (id, name, price, stock, category, isveg, image, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, name, price, stock, category, isveg, image, details || ''],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message || 'ID already exists or DB error.' });
+      res.json({ success: true, id });
+    }
+  );
+});
+
+// Edit Food Item (Admin required)
+app.put('/api/food-items/:id', authenticateToken(['admin']), (req, res) => {
+  const { name, price, stock, category, isveg, image, details } = req.body;
+  const foodId = req.params.id;
+
+  db.run(
+    "UPDATE food_items SET name = ?, price = ?, stock = ?, category = ?, isveg = ?, image = ?, details = ? WHERE id = ?",
+    [name, price, stock, category, isveg, image, details || '', foodId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, message: 'Item updated successfully.' });
+    }
+  );
+});
+
+// Delete Food Item (Admin required)
+app.delete('/api/food-items/:id', authenticateToken(['admin']), (req, res) => {
+  const foodId = req.params.id;
+  db.run("DELETE FROM food_items WHERE id = ?", [foodId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true, message: 'Item deleted.' });
+  });
+});
+
+// --- API INVENTORY / INGREDIENTS ENDPOINTS ---
+
+// Get Ingredients
+app.get('/api/ingredients', (req, res) => {
+  db.all("SELECT * FROM ingredients", (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// Add Ingredient (Admin required)
+app.post('/api/ingredients', authenticateToken(['admin']), (req, res) => {
+  const { id, name, stock, unit } = req.body;
+  if (!id || !name || stock == null || !unit) {
+    return res.status(400).json({ error: 'Missing parameters.' });
+  }
+
+  db.run(
+    "INSERT INTO ingredients (id, name, stock, unit, lastPurchaseDate) VALUES (?, ?, ?, ?, ?)",
+    [id, name, stock, unit, new Date().toISOString()],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message || 'Ingredient exists or DB error.' });
+      res.json({ success: true });
+    }
+  );
+});
+
+// Update Ingredient Stock (Admin required)
+app.put('/api/ingredients/:id', authenticateToken(['admin']), (req, res) => {
+  const { stock, name, unit } = req.body;
+  const ingId = req.params.id;
+
+  db.run(
+    "UPDATE ingredients SET name = ?, stock = ?, unit = ? WHERE id = ?",
+    [name, stock, unit, ingId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    }
+  );
+});
+
+// Delete Ingredient (Admin required)
+app.delete('/api/ingredients/:id', authenticateToken(['admin']), (req, res) => {
+  const ingId = req.params.id;
+  db.run("DELETE FROM ingredients WHERE id = ?", [ingId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true, message: 'Ingredient deleted.' });
+  });
+});
+
+// --- API STOCK LOCKS ENDPOINTS ---
+
+// Create Stock Hold Lock
+app.post('/api/locks', (req, res) => {
+  const { cartItems } = req.body; // Array of { id, quantity }
+  if (!cartItems || cartItems.length === 0) {
+    return res.status(400).json({ error: 'Cart is empty.' });
+  }
+
+  const lockId = 'LK-' + Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+  db.serialize(() => {
+    let hasError = false;
+    const stmt = db.prepare("INSERT INTO locks (id, foodItemId, quantity, expiryTime) VALUES (?, ?, ?, ?)");
+    cartItems.forEach(item => {
+      stmt.run([lockId, item.id, item.quantity, expiry], (err) => {
+        if (err) {
+          console.error("Error inserting stock lock:", err);
+          hasError = true;
+        }
+      });
+    });
+    stmt.finalize((err) => {
+      if (err || hasError) {
+        return res.status(500).json({ error: 'Failed to create stock hold locks.' });
+      }
+      res.json({ lockId });
+    });
+  });
+});
+
+// Release Specific Lock
+app.post('/api/locks/release', (req, res) => {
+  const { lockId } = req.body;
+  if (!lockId) return res.status(400).json({ error: 'Missing lock ID.' });
+
+  db.run("DELETE FROM locks WHERE id = ?", [lockId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true });
+  });
+});
+
+// --- API BOOKINGS & TRANSACTIONS ENDPOINTS ---
+
+// Get All Bookings (Admin/Operator auth required)
+app.get('/api/bookings', authenticateToken(['admin', 'operator']), (req, res) => {
+  db.all("SELECT * FROM bookings ORDER BY bookingTime DESC", (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    
+    // Parse items JSON strings
+    const processed = rows.map(r => ({
+      ...r,
+      items: JSON.parse(r.items)
+    }));
+    res.json(processed);
+  });
+});
+
+// Get Single Booking Status (Public)
+app.get('/api/bookings/status/:id', (req, res) => {
+  const bookingId = req.params.id;
+  db.get("SELECT id, status, expiryTime, redeemedTime FROM bookings WHERE id = ?", [bookingId], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: 'Booking not found.' });
+    res.json(row);
+  });
+});
+
+// Retrieve Bookings by Customer Name and Pass Key (4-digit PIN)
+app.post('/api/bookings/retrieve', (req, res) => {
+  const { customerName, passkey } = req.body;
+  if (!customerName || !passkey) {
+    return res.status(400).json({ error: 'Name and Pass Key PIN required.' });
+  }
+
+  db.all(
+    "SELECT * FROM bookings WHERE LOWER(customerName) = ? AND passkey = ? AND status != 'redeemed' ORDER BY bookingTime DESC",
+    [customerName.toLowerCase().trim(), passkey],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      const processed = rows.map(r => ({
+        ...r,
+        items: JSON.parse(r.items)
+      }));
+      res.json(processed);
+    }
+  );
+});
+
+// --- API RAZORPAY PAYMENT ENDPOINTS ---
+
+// Get Razorpay Configuration (Public)
+app.get('/api/payments/config', (req, res) => {
+  db.get("SELECT value FROM settings WHERE key = 'razorpay_key_id'", (err, row) => {
+    const keyId = row ? row.value : process.env.RAZORPAY_KEY_ID;
+    if (keyId && keyId.trim() !== '') {
+      res.json({ enabled: true, keyId: keyId.trim() });
+    } else {
+      res.json({ enabled: false });
+    }
+  });
+});
+
+// Save Razorpay API Keys (Admin only)
+app.post('/api/settings/razorpay', authenticateToken(['admin']), (req, res) => {
+  const { keyId, keySecret } = req.body;
+  if (!keyId || !keySecret) {
+    return res.status(400).json({ error: 'Both Key ID and Key Secret are required.' });
+  }
+
+  db.serialize(() => {
+    db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('razorpay_key_id', ?)", [keyId.trim()]);
+    db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('razorpay_key_secret', ?)", [keySecret.trim()], (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to save Razorpay credentials.' });
+      }
+      res.json({ success: true, message: 'Razorpay API credentials updated successfully.' });
+    });
+  });
+});
+
+// Create Razorpay Order
+app.post('/api/payments/create-order', (req, res) => {
+  const { amount } = req.body;
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: 'Invalid checkout amount.' });
+  }
+
+  // Fetch Razorpay credentials from db or environment
+  db.get("SELECT value FROM settings WHERE key = 'razorpay_key_id'", (err, rId) => {
+    db.get("SELECT value FROM settings WHERE key = 'razorpay_key_secret'", (err, rSecret) => {
+      const keyId = (rId ? rId.value : process.env.RAZORPAY_KEY_ID) || '';
+      const keySecret = (rSecret ? rSecret.value : process.env.RAZORPAY_KEY_SECRET) || '';
+
+      if (!keyId.trim() || !keySecret.trim()) {
+        return res.status(500).json({ error: 'Razorpay credentials not configured on server.' });
+      }
+
+      try {
+        const Razorpay = require('razorpay');
+        const razorpay = new Razorpay({
+          key_id: keyId.trim(),
+          key_secret: keySecret.trim()
+        });
+
+        const options = {
+          amount: Math.round(amount * 100), // in paise
+          currency: "INR",
+          receipt: "rzp_rec_" + Math.floor(100000 + Math.random() * 900000).toString()
+        };
+
+        razorpay.orders.create(options, (err, order) => {
+          if (err) {
+            console.error("Razorpay order creation error:", err);
+            return res.status(500).json({ error: err.message || 'Razorpay order creation failed.' });
+          }
+          res.json(order);
+        });
+      } catch (e) {
+        console.error("Razorpay SDK initialize failed:", e);
+        res.status(500).json({ error: 'Failed to initialize payment gateway.' });
+      }
+    });
+  });
+});
+
+// Verify signature and finalize order
+app.post('/api/payments/verify-signature', (req, res) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, bookingData } = req.body;
+  
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !bookingData) {
+    return res.status(400).json({ error: 'Missing payment signature verification parameters.' });
+  }
+
+  db.get("SELECT value FROM settings WHERE key = 'razorpay_key_secret'", (err, rSecret) => {
+    const keySecret = (rSecret ? rSecret.value : process.env.RAZORPAY_KEY_SECRET) || '';
+
+    if (!keySecret.trim()) {
+      return res.status(500).json({ error: 'Payment gateway configuration missing.' });
+    }
+
+    try {
+      const crypto = require('crypto');
+      const text = razorpay_order_id + "|" + razorpay_payment_id;
+      const expectedSignature = crypto
+        .createHmac('sha256', keySecret.trim())
+        .update(text)
+        .digest('hex');
+
+      if (expectedSignature !== razorpay_signature) {
+        return res.status(400).json({ error: 'Cryptographic signature verification failed.' });
+      }
+
+      // Check stock & finalize booking
+      const { id, customerName, customerPhone, passkey, items, totalAmount, lockId } = bookingData;
+
+      db.all("SELECT * FROM food_items", (err, catalog) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        let stockIssues = [];
+        items.forEach(cItem => {
+          const food = catalog.find(f => f.id === cItem.foodItemId);
+          if (!food || food.stock < cItem.quantity) {
+            stockIssues.push(`${cItem.name} (Only ${food ? food.stock : 0} available)`);
+          }
+        });
+
+        if (stockIssues.length > 0) {
+          return res.status(409).json({ error: 'Stock deficit detected.', details: stockIssues });
+        }
+
+        const bookingTime = new Date().toISOString();
+        const expiryTime = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
+
+        db.serialize(() => {
+          db.run("BEGIN TRANSACTION");
+
+          const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
+          items.forEach(item => {
+            updateStmt.run([item.quantity, item.foodItemId]);
+          });
+          updateStmt.finalize();
+
+          db.run(
+            "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, 'Razorpay (Online)', 'Paid', bookingTime, expiryTime, 'pending']
+          );
+
+          const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
+          db.run(
+            "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
+            [txId, 'sale', `Online Order - ${customerName}`, totalAmount, bookingTime, items.map(i => `${i.name} x${i.quantity}`).join(', ')]
+          );
+
+          if (lockId) {
+            db.run("DELETE FROM locks WHERE id = ?", [lockId]);
+          }
+
+          db.run("COMMIT", (commitErr) => {
+            if (commitErr) {
+              db.run("ROLLBACK");
+              return res.status(500).json({ error: 'Failed to record online booking.' });
+            }
+            res.json({ success: true, bookingId: id });
+          });
+        });
+      });
+    } catch (e) {
+      console.error("Signature verify failed with crash:", e);
+      res.status(500).json({ error: 'Cryptographic signature verification crash.' });
+    }
+  });
+});
+
+// Place Booking (Checkout Checkout Order)
+app.post('/api/bookings', (req, res) => {
+  const { id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, lockId } = req.body;
+
+  if (!id || !customerName || !customerPhone || !passkey || !items || !totalAmount) {
+    return res.status(400).json({ error: 'Invalid booking data.' });
+  }
+
+  // 1. Double check current catalog stock
+  db.all("SELECT * FROM food_items", (err, catalog) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    let stockIssues = [];
+    items.forEach(cItem => {
+      const food = catalog.find(f => f.id === cItem.foodItemId);
+      if (!food || food.stock < cItem.quantity) {
+        stockIssues.push(`${cItem.name} (Only ${food ? food.stock : 0} available)`);
+      }
+    });
+
+    if (stockIssues.length > 0) {
+      return res.status(409).json({ error: 'Stock deficit detected.', details: stockIssues });
+    }
+
+    // 2. Perform booking insertion and stock reduction
+    const bookingTime = new Date().toISOString();
+    const expiryTime = new Date(Date.now() + 5 * 3600 * 1000).toISOString(); // 5 Hours
+
+    db.serialize(() => {
+      // Begin transaction manually in serialize
+      db.run("BEGIN TRANSACTION");
+
+      // Reduce item stock levels
+      const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
+      items.forEach(item => {
+        updateStmt.run([item.quantity, item.foodItemId]);
+      });
+      updateStmt.finalize();
+
+      // Insert booking record
+      db.run(
+        "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, paymentMethod, 'Paid', bookingTime, expiryTime, 'pending']
+      );
+
+      // Create cashier ledger transaction logs
+      const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
+      const txTitle = `Order Placed - ${customerName}`;
+      const txDetails = items.map(i => `${i.name} x${i.quantity}`).join(', ');
+      db.run(
+        "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
+        [txId, 'sale', txTitle, totalAmount, bookingTime, txDetails]
+      );
+
+      // Release the temporary lock
+      if (lockId) {
+        db.run("DELETE FROM locks WHERE id = ?", [lockId]);
+      }
+
+      db.run("COMMIT", (commitErr) => {
+        if (commitErr) {
+          db.run("ROLLBACK");
+          return res.status(500).json({ error: 'Failed to place booking transaction.' });
+        }
+        res.json({ success: true, bookingId: id });
+      });
+    });
+  });
+});
+
+// Redeem Booking (Admin/Operator required)
+app.post('/api/bookings/redeem', authenticateToken(['admin', 'operator']), (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: 'Booking token ID is required.' });
+
+  db.get("SELECT * FROM bookings WHERE id = ?", [id], (err, booking) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!booking) {
+      return res.status(404).json({ error: 'Ticket ID not found in database.' });
+    }
+
+    if (booking.status === 'redeemed') {
+      return res.status(409).json({ error: 'Ticket already redeemed.', redeemedTime: booking.redeemedTime });
+    }
+
+    // Expiry check
+    const expiry = new Date(booking.expiryTime);
+    if (Date.now() > expiry.getTime()) {
+      db.run("UPDATE bookings SET status = 'expired' WHERE id = ?", [id]);
+      return res.status(410).json({ error: 'Ticket expired.' });
+    }
+
+    const redeemedTime = new Date().toISOString();
+    db.run(
+      "UPDATE bookings SET status = 'redeemed', redeemedTime = ? WHERE id = ?",
+      [redeemedTime, id],
+      function(updateErr) {
+        if (updateErr) return res.status(500).json({ error: updateErr.message });
+        
+        // Return booking details parsed
+        res.json({
+          success: true,
+          booking: {
+            ...booking,
+            items: JSON.parse(booking.items),
+            status: 'redeemed',
+            redeemedTime
+          }
+        });
+      }
+    );
+  });
+});
+
+// --- API LEDGER ENDPOINTS ---
+
+// Get Ledger logs (Admin/Operator required)
+app.get('/api/ledger', authenticateToken(['admin', 'operator']), (req, res) => {
+  db.all("SELECT * FROM transactions ORDER BY timestamp DESC", (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// Add Custom transaction (Admin required)
+app.post('/api/ledger', authenticateToken(['admin']), (req, res) => {
+  const { type, title, amount, details } = req.body;
+  if (!type || !title || amount == null) {
+    return res.status(400).json({ error: 'Invalid transaction parameters.' });
+  }
+
+  const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
+  const timestamp = new Date().toISOString();
+
+  db.run(
+    "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
+    [txId, type, title, amount, timestamp, details || ''],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, id: txId });
+    }
+  );
+});
+
+// Edit Transaction (Admin required)
+app.put('/api/ledger/:id', authenticateToken(['admin']), (req, res) => {
+  const { amount, details } = req.body;
+  const txId = req.params.id;
+
+  db.run(
+    "UPDATE transactions SET amount = ?, details = ? WHERE id = ?",
+    [amount, details, txId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    }
+  );
+});
+
+// Delete Transaction (Admin required)
+app.delete('/api/ledger/:id', authenticateToken(['admin']), (req, res) => {
+  const txId = req.params.id;
+  db.run("DELETE FROM transactions WHERE id = ?", [txId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true });
+  });
+});
+
+// --- API BACKUP / EXPORT / IMPORT ENDPOINTS ---
+
+// Export entire database state as JSON string (Admin required)
+app.get('/api/backup/export', authenticateToken(['admin']), (req, res) => {
+  const backup = {};
+  db.all("SELECT * FROM food_items", (err, foods) => {
+    backup.foodItems = foods || [];
+    db.all("SELECT * FROM bookings", (err, bookings) => {
+      backup.bookings = (bookings || []).map(b => ({ ...b, items: JSON.parse(b.items) }));
+      db.all("SELECT * FROM ingredients", (err, ings) => {
+        backup.ingredients = ings || [];
+        db.all("SELECT * FROM transactions", (err, txs) => {
+          backup.transactions = txs || [];
+          db.all("SELECT * FROM settings", (err, settings) => {
+            // Find settings values
+            const settingsObj = {};
+            settings.forEach(s => {
+              settingsObj[s.key] = s.value;
+            });
+            backup.settings = settingsObj;
+            res.json(backup);
+          });
+        });
+      });
+    });
+  });
+});
+
+// Restore database from uploaded JSON object (Admin required)
+app.post('/api/backup/restore', authenticateToken(['admin']), (req, res) => {
+  const data = req.body;
+  if (!data) return res.status(400).json({ error: 'Missing backup payload.' });
+
+  db.serialize(() => {
+    db.run("BEGIN TRANSACTION");
+    
+    // Clear and refill food items
+    if (data.foodItems) {
+      db.run("DELETE FROM food_items");
+      const stmt = db.prepare("INSERT INTO food_items (id, name, price, stock, category, isveg, image, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+      data.foodItems.forEach(f => {
+        stmt.run([f.id, f.name, f.price, f.stock, f.category, f.isveg, f.image, f.details || '']);
+      });
+      stmt.finalize();
+    }
+
+    // Clear and refill bookings
+    if (data.bookings) {
+      db.run("DELETE FROM bookings");
+      const stmt = db.prepare("INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status, redeemedTime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      data.bookings.forEach(b => {
+        stmt.run([b.id, b.customerName, b.customerPhone, b.passkey, JSON.stringify(b.items), b.totalAmount, b.paymentMethod, b.paymentStatus, b.bookingTime, b.expiryTime, b.status, b.redeemedTime || null]);
+      });
+      stmt.finalize();
+    }
+
+    // Clear and refill ingredients
+    if (data.ingredients) {
+      db.run("DELETE FROM ingredients");
+      const stmt = db.prepare("INSERT INTO ingredients (id, name, stock, unit, lastPurchaseDate) VALUES (?, ?, ?, ?, ?)");
+      data.ingredients.forEach(i => {
+        stmt.run([i.id, i.name, i.stock, i.unit, i.lastPurchaseDate || null]);
+      });
+      stmt.finalize();
+    }
+
+    // Clear and refill transactions
+    if (data.transactions) {
+      db.run("DELETE FROM transactions");
+      const stmt = db.prepare("INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)");
+      data.transactions.forEach(t => {
+        stmt.run([t.id, t.type, t.title, t.amount, t.timestamp, t.details || '']);
+      });
+      stmt.finalize();
+    }
+
+    // Refill settings credentials
+    if (data.settings) {
+      Object.keys(data.settings).forEach(key => {
+        db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, data.settings[key]]);
+      });
+    }
+
+    db.run("COMMIT", (err) => {
+      if (err) {
+        db.run("ROLLBACK");
+        return res.status(500).json({ error: 'Restore database failed.' });
+      }
+      res.json({ success: true, message: 'Database successfully restored.' });
+    });
+  });
+});
+
+// Launch Server Listening
+app.listen(PORT, () => {
+  console.log(`========================================================`);
+  console.log(`🚀 N Cafe Production Server launched at: http://localhost:${PORT}`);
+  console.log(`🔒 Secure SSL/HTTPS and API endpoints fully operational.`);
+  console.log(`========================================================`);
+});

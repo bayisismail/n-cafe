@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N Cafe - Operator Scanner</title>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- HTML5-QRCode Library -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  
+  <!-- Style Sheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body style="background: var(--bg-dark); color: var(--text-main);">
+
+  <!-- ==================== OPERATOR PIN GATE ==================== -->
+  <div class="passcode-backdrop active" id="operator-login-gate">
+    <div class="passcode-card" id="passcode-modal-card" style="width: 360px;">
+      <div class="logo-container" style="justify-content: center; margin-bottom: 1.5rem;">
+        <div class="logo-icon">N</div>
+        <div class="logo-text" style="text-align: left;">
+          <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin: 0;">N <span>Cafe</span></h2>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Misty Hills Kitchen</p>
+        </div>
+      </div>
+      <h3>Operator PIN</h3>
+      <p style="margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-muted);">Enter 4-digit counter scanner passcode</p>
+      <div class="pin-display-dots">
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+      </div>
+      <div class="pin-keypad" style="margin-top: 1.5rem;" id="operator-pin-keypad">
+        <button class="pin-btn" data-key="1">1</button>
+        <button class="pin-btn" data-key="2">2</button>
+        <button class="pin-btn" data-key="3">3</button>
+        <button class="pin-btn" data-key="4">4</button>
+        <button class="pin-btn" data-key="5">5</button>
+        <button class="pin-btn" data-key="6">6</button>
+        <button class="pin-btn" data-key="7">7</button>
+        <button class="pin-btn" data-key="8">8</button>
+        <button class="pin-btn" data-key="9">9</button>
+        <button class="pin-btn cancel-btn" id="btn-operator-exit">EXIT</button>
+        <button class="pin-btn" data-key="0">0</button>
+        <button class="pin-btn back-btn" data-key="back"><i class="fas fa-backspace"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN SCANNER CONTAINER ==================== -->
+  <main class="app-body" id="operator-scanner-container" style="display: none; padding: 1.5rem; max-width: 600px; margin: 0 auto;">
+    
+    <!-- Top Header Navigation -->
+    <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-dark); padding-bottom: 1rem; margin-bottom: 1.5rem; background: transparent; box-shadow: none;">
+      <div class="logo-container">
+        <div class="logo-icon">N</div>
+        <div class="logo-text">
+          <h1>N <span>Cafe</span></h1>
+          <p>Operator Scanner Portal</p>
+        </div>
+      </div>
+      <button class="nav-btn logout-btn" id="btn-operator-logout" style="background: rgba(234, 67, 53, 0.1); color: #ea4335; border: 1px solid rgba(234, 67, 53, 0.2); padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600;">
+        <i class="fas fa-sign-out-alt"></i> Exit Scanner
+      </button>
+    </header>
+
+    <!-- Scanner Role Panel -->
+    <div id="scanner-section" class="role-section">
+      <div class="scanner-viewport-container">
+        
+        <div class="scanner-header">
+          <h3><i class="fas fa-barcode"></i> Counter Barcode <span>Scanner</span></h3>
+        </div>
+
+        <div class="scanner-screen">
+          <div class="scanner-screen-laser-overlay"></div>
+          <div class="scanner-scan-line"></div>
+          
+          <div class="scanner-prompt">
+            <i class="fas fa-camera" style="font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.4;"></i>
+            <p id="scanner-prompt-text">Align barcode inside screen viewport</p>
+          </div>
+
+          <!-- Scan Feedbacks -->
+          <!-- 1. Success feedback -->
+          <div class="scanner-scan-feedback success" id="scan-feedback-success">
+            <i class="fas fa-check-circle scan-feedback-icon"></i>
+            <div class="scan-feedback-title">ORDER REDEEMED</div>
+            <div class="scan-feedback-desc">Verification receipt printed successfully</div>
+          </div>
+
+          <!-- 2. Error feedback -->
+          <div class="scanner-scan-feedback error" id="scan-feedback-error">
+            <i class="fas fa-times-circle scan-feedback-icon"></i>
+            <div class="scan-feedback-title">INVALID BARCODE</div>
+            <div class="scan-feedback-desc">Check code and scan again</div>
+          </div>
+
+          <!-- 3. Already Redeemed Warning feedback -->
+          <div class="scanner-scan-feedback warning" id="scan-feedback-warning">
+            <i class="fas fa-exclamation-triangle scan-feedback-icon"></i>
+            <div class="scan-feedback-title">ALREADY USED</div>
+            <div class="scan-feedback-desc">Redeemed: <span id="warning-redeemed-time">--/--</span></div>
+            <div class="scan-feedback-desc" style="font-size: 0.75rem; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 0.5rem; padding-top: 0.25rem;">Security protocol triggered</div>
+          </div>
+        </div>
+
+        <!-- Live Camera Scan Viewport -->
+        <div id="camera-scan-container" style="padding: 1.5rem 1.5rem 0 1.5rem; text-align: center; border-bottom: 1px solid rgba(255, 255, 255, 0.05); background: rgba(0,0,0,0.2);">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.5px;">Live Webcam QR Scanner</label>
+          <div id="qr-reader" style="width: 100%; max-width: 360px; margin: 0 auto 1.25rem auto; border: 1.5px solid var(--border-dark); border-radius: 12px; overflow: hidden; background: #000;"></div>
+        </div>
+
+        <!-- Manual scan simulator triggers -->
+        <div class="scanner-manual-input">
+          <form id="scanner-form">
+            <div class="form-group">
+              <label for="barcode-scan-input">Manual Token ID Entry (Fallback)</label>
+              <div class="flex gap-1">
+                <input type="text" id="barcode-scan-input" placeholder="Enter 100-char ID" style="flex-grow: 1;">
+                <button type="submit" class="btn-sm btn-sm-primary" style="padding: 0.8rem 1.2rem; font-size: 0.85rem; border-radius: 10px;">
+                  Scan
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Scanner receipt popup modal dialog -->
+  <div class="receipt-popup-container" id="receipt-popup-container">
+    <div class="receipt-popup-card">
+      <div class="receipt-popup-header">
+        <h3>N Cafe POS Receipt</h3>
+        <p>Barcode verification matches order database</p>
+      </div>
+      <div class="receipt-popup-body">
+        <div class="receipt-popup-row">
+          <span>Booking ID:</span>
+          <strong id="receipt-id">NC-XXXXXXXX</strong>
+        </div>
+        <div class="receipt-popup-row">
+          <span>Customer Name:</span>
+          <strong id="receipt-cust-name">Aditya Verma</strong>
+        </div>
+        <div class="receipt-popup-row">
+          <span>Phone:</span>
+          <span id="receipt-cust-phone">9876543210</span>
+        </div>
+        <div class="receipt-popup-row">
+          <span>Order Date:</span>
+          <span id="receipt-time">13/06/2026 12:00 AM</span>
+        </div>
+
+        <!-- Items list table -->
+        <div class="receipt-popup-items" id="receipt-items-list">
+          <!-- JS inserts items here -->
+        </div>
+
+        <div class="receipt-popup-row">
+          <span>Subtotal</span>
+          <span id="receipt-subtotal">₹0</span>
+        </div>
+        <div class="receipt-popup-row">
+          <span>GST Tax (5%)</span>
+          <span id="receipt-tax">₹0</span>
+        </div>
+        <div class="receipt-popup-row" style="font-size: 1.1rem; font-weight: 700; color: #111;">
+          <span>Total Paid (Prepaid)</span>
+          <span id="receipt-total" style="color: var(--primary);">₹0</span>
+        </div>
+      </div>
+      <div class="receipt-popup-footer">
+        <button class="btn-popup btn-popup-secondary" id="btn-receipt-cancel">Cancel Scan</button>
+        <!-- Download Counter Bill button -->
+        <button class="btn-popup btn-popup-secondary" id="btn-receipt-download" style="background: var(--accent); color: var(--bg-dark);"><i class="fas fa-file-download"></i> Download Bill</button>
+        <button class="btn-popup btn-popup-primary" id="btn-receipt-confirm"><i class="fas fa-print"></i> Issue Bill & Food</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scanner Controller -->
+  <script src="scanner.js"></script>
+</body>
+</html>

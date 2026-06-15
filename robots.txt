@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /$
+Allow: /index.html
+Allow: /customer.js
+Allow: /style.css
+Allow: /assets/
+Disallow: /admin
+Disallow: /admin.html
+Disallow: /admin.js
+Disallow: /scanner
+Disallow: /scanner.html
+Disallow: /scanner.js
+Disallow: /api/
+Disallow: /n_cafe.db
+
+Sitemap: https://ncafe.onrender.com/sitemap.xml
