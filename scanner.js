@@ -18,6 +18,7 @@ const ScannerState = {
       return;
     }
 
+    await this.fetchSettings();
     this.hideLoginGate();
     this.setupEventListeners();
     this.initScannerView();
@@ -43,6 +44,20 @@ const ScannerState = {
     } catch (e) {
       console.error("Session verification failed", e);
       return false;
+    }
+  },
+
+  async fetchSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const settings = await res.json();
+        this.ticketExpiryHours = settings.ticketExpiryHours || 5;
+      } else {
+        this.ticketExpiryHours = 5;
+      }
+    } catch (e) {
+      this.ticketExpiryHours = 5;
     }
   },
 
@@ -130,7 +145,6 @@ const ScannerState = {
 
     // Receipt Popups Actions
     document.getElementById('btn-receipt-cancel').addEventListener('click', () => this.closeReceiptPopup());
-    document.getElementById('btn-receipt-confirm').addEventListener('click', () => this.closeReceiptPopup());
   },
 
   initScannerView() {
@@ -297,7 +311,7 @@ const ScannerState = {
       } else if (res.status === 410) {
         // Expired
         document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'TICKET EXPIRED';
-        document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'Ticket expired past the 5-hour limit.';
+        document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = `Ticket expired past the ${this.ticketExpiryHours || 5}-hour limit.`;
         feedbackError.style.display = 'flex';
         
         setTimeout(() => {
@@ -352,8 +366,8 @@ const ScannerState = {
       list.appendChild(div);
     });
 
-    const tax = Math.round(booking.totalAmount - (booking.totalAmount / 1.05));
-    const sub = booking.totalAmount - tax;
+    const tax = 0;
+    const sub = booking.totalAmount;
     document.getElementById('receipt-subtotal').innerText = `₹${sub}`;
     document.getElementById('receipt-tax').innerText = `₹${tax}`;
     document.getElementById('receipt-total').innerText = `₹${booking.totalAmount}`;
@@ -363,6 +377,15 @@ const ScannerState = {
     if (dlBtn) {
       dlBtn.onclick = () => {
         downloadReceipt(booking);
+      };
+    }
+
+    // Automatically download receipt and close popup on Confirm click
+    const confirmBtn = document.getElementById('btn-receipt-confirm');
+    if (confirmBtn) {
+      confirmBtn.onclick = () => {
+        downloadReceipt(booking);
+        this.closeReceiptPopup();
       };
     }
   },
@@ -417,8 +440,8 @@ function downloadReceipt(booking) {
   if (!booking) return;
   
   const itemsText = booking.items.map(i => `${i.name.padEnd(25)} x${i.quantity.toString().padEnd(3)} - ₹${i.price * i.quantity}`).join('\n');
-  const tax = Math.round(booking.totalAmount - (booking.totalAmount / 1.05));
-  const sub = booking.totalAmount - tax;
+  const tax = 0;
+  const sub = booking.totalAmount;
   
   const textReceiptContent = `
 ==================================================
@@ -435,7 +458,6 @@ Delights Particulars:
 ${itemsText}
 --------------------------------------------------
 Subtotal:       ₹${sub}
-GST (5%):       ₹${tax}
 Total Paid:     ₹${booking.totalAmount}
 ==================================================
         Thank you for ordering at N Cafe!

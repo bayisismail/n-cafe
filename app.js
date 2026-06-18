@@ -1039,8 +1039,8 @@ function renderCart() {
     cartList.appendChild(itemDiv);
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
 
   cartSubtotal.innerText = `₹${subtotal}`;
   cartTax.innerText = `₹${tax}`;
@@ -1080,8 +1080,8 @@ function initCheckoutPage() {
     summaryList.appendChild(row);
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
 
   document.getElementById('checkout-subtotal').innerText = `₹${subtotal}`;
   document.getElementById('checkout-tax').innerText = `₹${tax}`;
@@ -1375,8 +1375,8 @@ function finalizeCanteenOrder(paymentMethodText) {
     });
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
   const bookingId = generate100CharToken();
 
   const newBooking = {
@@ -1440,8 +1440,8 @@ function renderTicketPage() {
     itemsContainer.appendChild(row);
   });
 
-  const tax = Math.round(b.totalAmount - (b.totalAmount / 1.05));
-  const sub = b.totalAmount - tax;
+  const tax = 0;
+  const sub = b.totalAmount;
   document.getElementById('ticket-subtotal').innerText = `₹${sub}`;
   document.getElementById('ticket-tax').innerText = `₹${tax}`;
   document.getElementById('ticket-total').innerText = `₹${b.totalAmount}`;
@@ -1837,8 +1837,8 @@ function openReceiptPopup(booking) {
     list.appendChild(div);
   });
 
-  const tax = Math.round(booking.totalAmount - (booking.totalAmount / 1.05));
-  const sub = booking.totalAmount - tax;
+  const tax = 0;
+  const sub = booking.totalAmount;
   document.getElementById('receipt-subtotal').innerText = `₹${sub}`;
   document.getElementById('receipt-tax').innerText = `₹${tax}`;
   document.getElementById('receipt-total').innerText = `₹${booking.totalAmount}`;
@@ -1846,6 +1846,7 @@ function openReceiptPopup(booking) {
   // Bind Confirm Redemption button action
   const confirmBtn = document.getElementById('btn-receipt-confirm');
   confirmBtn.onclick = () => {
+    downloadReceipt(booking);
     redeemBookingOrder(booking);
     closeReceiptPopup();
   };
@@ -1893,8 +1894,8 @@ function downloadReceipt(booking) {
   if (!booking) return;
   
   const itemsText = booking.items.map(i => `${i.name.padEnd(25)} x${i.quantity.toString().padEnd(3)} - ₹${i.price * i.quantity}`).join('\n');
-  const tax = Math.round(booking.totalAmount - (booking.totalAmount / 1.05));
-  const sub = booking.totalAmount - tax;
+  const tax = 0;
+  const sub = booking.totalAmount;
   
   const textReceiptContent = `
 ==================================================
@@ -1911,7 +1912,6 @@ Delights Particulars:
 ${itemsText}
 --------------------------------------------------
 Subtotal:       ₹${sub}
-GST (5%):       ₹${tax}
 Total Paid:     ₹${booking.totalAmount}
 ==================================================
         Thank you for ordering at N Cafe!
@@ -2343,8 +2343,8 @@ function renderPOSCart() {
     list.appendChild(row);
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
 
   subTotalSpan.innerText = `₹${subtotal}`;
   taxSpan.innerText = `₹${tax}`;
@@ -2377,8 +2377,8 @@ document.getElementById('pos-billing-form').addEventListener('submit', (e) => {
     });
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
   const bookingId = generate100CharToken();
 
   const newBooking = {

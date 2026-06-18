@@ -17,7 +17,7 @@ app.use(helmet({
   contentSecurityPolicy: false, // Disabled for simple visual template styling and libraries
 }));
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Serve static web pages
 app.use(express.static(path.join(__dirname)));
@@ -222,6 +222,11 @@ function initializeDatabase() {
       details TEXT
     )`);
 
+    // Migration: Add offer_price column if it does not exist
+    db.run("ALTER TABLE food_items ADD COLUMN offer_price REAL DEFAULT NULL", (err) => {
+      // Ignore error if column already exists
+    });
+
     // 2. Bookings Table
     db.run(`CREATE TABLE IF NOT EXISTS bookings (
       id TEXT PRIMARY KEY,
@@ -295,9 +300,26 @@ function seedDatabase() {
         bank: 'State Bank of India',
         accNo: '39485710293',
         ifsc: 'SBIN0008472',
-        upiId: 'ncafe.canteen@okaxis'
+        upiId: 'ncafe.canteen@okaxis',
+        ticketExpiryHours: 5
       };
       db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('account_details', ?)", [JSON.stringify(defaultAcc)]);
+    }
+  });
+
+  // Seed special offer default configuration if missing
+  db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'special_offer'", (err, row) => {
+    if (err) return console.error(err);
+    if (!row || parseInt(row.count, 10) === 0) {
+      console.log('Seeding default special offer banner settings...');
+      const defaultOffer = {
+        active: false,
+        title: 'Special Hills Combo',
+        desc: 'Masala Dosa + Misty Hills Filter Coffee combo at a special discount!',
+        price: 90,
+        image: 'assets/south_indian_meals.png'
+      };
+      db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('special_offer', ?)", [JSON.stringify(defaultOffer)]);
     }
   });
 
@@ -466,6 +488,33 @@ app.post('/api/auth/change-credentials', authenticateToken(['admin']), (req, res
   });
 });
 
+// Admin Image Upload Endpoint (Admin only)
+app.post('/api/upload-image', authenticateToken(['admin']), (req, res) => {
+  const { imageName, base64Data } = req.body;
+  if (!imageName || !base64Data) {
+    return res.status(400).json({ error: 'Missing parameters.' });
+  }
+
+  try {
+    const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Clean, 'base64');
+    
+    const safeName = path.basename(imageName).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const targetPath = path.join(__dirname, 'assets', safeName);
+
+    fs.writeFile(targetPath, buffer, (err) => {
+      if (err) {
+        console.error("Failed to write image file:", err);
+        return res.status(500).json({ error: 'Failed to save image file on server.' });
+      }
+      res.json({ success: true, imagePath: `assets/${safeName}` });
+    });
+  } catch (e) {
+    console.error("Image upload parsing error:", e);
+    res.status(500).json({ error: 'Failed to process image data.' });
+  }
+});
+
 // --- API ACCOUNT SETTINGS ENDPOINTS ---
 
 // Get Settings (Public bank info + credentials metadata)
@@ -480,17 +529,65 @@ app.get('/api/settings', (req, res) => {
 
 // Save Account Details (Admin auth required)
 app.post('/api/settings', authenticateToken(['admin']), (req, res) => {
-  const { name, bank, accNo, ifsc, upiId } = req.body;
+  const { name, bank, accNo, ifsc, upiId, ticketExpiryHours } = req.body;
   if (!name || !bank || !accNo || !ifsc || !upiId) {
     return res.status(400).json({ error: 'All fields are required.' });
   }
 
-  const newAcc = { name, bank, accNo, ifsc, upiId };
+  const newAcc = { name, bank, accNo, ifsc, upiId, ticketExpiryHours: ticketExpiryHours ? parseInt(ticketExpiryHours, 10) : 5 };
   db.run("UPDATE settings SET value = ? WHERE key = 'account_details'", [JSON.stringify(newAcc)], (err) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to save account settings.' });
     }
     res.json({ success: true, message: 'Account details saved successfully.' });
+  });
+});
+
+// Get Special Offer (Public)
+app.get('/api/special-offer', (req, res) => {
+  db.get("SELECT value FROM settings WHERE key = 'special_offer'", (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to retrieve special offer settings.' });
+    }
+    if (!row) {
+      const defaultOffer = {
+        active: false,
+        title: 'Special Hills Combo',
+        desc: 'Masala Dosa + Misty Hills Filter Coffee combo at a special discount!',
+        price: 90,
+        image: 'assets/south_indian_meals.png'
+      };
+      return res.json(defaultOffer);
+    }
+    try {
+      const offer = JSON.parse(row.value);
+      res.json(offer);
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to parse special offer settings.' });
+    }
+  });
+});
+
+// Save Special Offer (Admin only)
+app.post('/api/special-offer', authenticateToken(['admin']), (req, res) => {
+  const { active, title, desc, price, image } = req.body;
+  if (title === undefined || price === undefined) {
+    return res.status(400).json({ error: 'Missing title or price.' });
+  }
+
+  const offerData = {
+    active: !!active,
+    title,
+    desc: desc || '',
+    price: Number(price) || 0,
+    image: image || 'assets/south_indian_meals.png'
+  };
+
+  db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('special_offer', ?)", [JSON.stringify(offerData)], (err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to save special offer settings.' });
+    }
+    res.json({ success: true, specialOffer: offerData });
   });
 });
 
@@ -514,6 +611,7 @@ app.get('/api/food-items', (req, res) => {
         const lockedVal = lockMap[f.id] || 0;
         return {
           ...f,
+          offerPrice: f.offer_price,
           availableStock: Math.max(0, f.stock - lockedVal)
         };
       });
@@ -525,14 +623,16 @@ app.get('/api/food-items', (req, res) => {
 
 // Add Food Item (Admin required)
 app.post('/api/food-items', authenticateToken(['admin']), (req, res) => {
-  const { id, name, price, stock, category, isveg, image, details } = req.body;
+  const { id, name, price, stock, category, isveg, image, details, offerPrice } = req.body;
   if (!id || !name || price == null || stock == null || !category || !isveg || !image) {
     return res.status(400).json({ error: 'Invalid food payload.' });
   }
 
+  const parsedOfferPrice = (offerPrice === '' || offerPrice === undefined || offerPrice === null) ? null : parseFloat(offerPrice);
+
   db.run(
-    "INSERT INTO food_items (id, name, price, stock, category, isveg, image, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, name, price, stock, category, isveg, image, details || ''],
+    "INSERT INTO food_items (id, name, price, stock, category, isveg, image, details, offer_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, name, price, stock, category, isveg, image, details || '', parsedOfferPrice],
     function(err) {
       if (err) return res.status(500).json({ error: err.message || 'ID already exists or DB error.' });
       res.json({ success: true, id });
@@ -542,12 +642,13 @@ app.post('/api/food-items', authenticateToken(['admin']), (req, res) => {
 
 // Edit Food Item (Admin required)
 app.put('/api/food-items/:id', authenticateToken(['admin']), (req, res) => {
-  const { name, price, stock, category, isveg, image, details } = req.body;
+  const { name, price, stock, category, isveg, image, details, offerPrice } = req.body;
   const foodId = req.params.id;
+  const parsedOfferPrice = (offerPrice === '' || offerPrice === undefined || offerPrice === null) ? null : parseFloat(offerPrice);
 
   db.run(
-    "UPDATE food_items SET name = ?, price = ?, stock = ?, category = ?, isveg = ?, image = ?, details = ? WHERE id = ?",
-    [name, price, stock, category, isveg, image, details || '', foodId],
+    "UPDATE food_items SET name = ?, price = ?, stock = ?, category = ?, isveg = ?, image = ?, details = ?, offer_price = ? WHERE id = ?",
+    [name, price, stock, category, isveg, image, details || '', parsedOfferPrice, foodId],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, message: 'Item updated successfully.' });
@@ -817,6 +918,7 @@ app.post('/api/payments/verify-signature', (req, res) => {
 
         let stockIssues = [];
         items.forEach(cItem => {
+          if (cItem.foodItemId === 'FD-SPECIAL') return;
           const food = catalog.find(f => f.id === cItem.foodItemId);
           if (!food || food.stock < cItem.quantity) {
             stockIssues.push(`${cItem.name} (Only ${food ? food.stock : 0} available)`);
@@ -827,39 +929,53 @@ app.post('/api/payments/verify-signature', (req, res) => {
           return res.status(409).json({ error: 'Stock deficit detected.', details: stockIssues });
         }
 
-        const bookingTime = new Date().toISOString();
-        const expiryTime = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
-
-        db.serialize(() => {
-          db.run("BEGIN TRANSACTION");
-
-          const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
-          items.forEach(item => {
-            updateStmt.run([item.quantity, item.foodItemId]);
-          });
-          updateStmt.finalize();
-
-          db.run(
-            "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, 'Razorpay (Online)', 'Paid', bookingTime, expiryTime, 'pending']
-          );
-
-          const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
-          db.run(
-            "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
-            [txId, 'sale', `Online Order - ${customerName}`, totalAmount, bookingTime, items.map(i => `${i.name} x${i.quantity}`).join(', ')]
-          );
-
-          if (lockId) {
-            db.run("DELETE FROM locks WHERE id = ?", [lockId]);
+        db.get("SELECT value FROM settings WHERE key = 'account_details'", (err, settingsRow) => {
+          let ticketHours = 5;
+          if (!err && settingsRow) {
+            try {
+              const config = JSON.parse(settingsRow.value);
+              if (config.ticketExpiryHours) {
+                ticketHours = parseFloat(config.ticketExpiryHours);
+              }
+            } catch (e) {}
           }
 
-          db.run("COMMIT", (commitErr) => {
-            if (commitErr) {
-              db.run("ROLLBACK");
-              return res.status(500).json({ error: 'Failed to record online booking.' });
+          const bookingTime = new Date().toISOString();
+          const expiryTime = new Date(Date.now() + ticketHours * 3600 * 1000).toISOString();
+
+          db.serialize(() => {
+            db.run("BEGIN TRANSACTION");
+
+            const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
+            items.forEach(item => {
+              if (item.foodItemId !== 'FD-SPECIAL') {
+                updateStmt.run([item.quantity, item.foodItemId]);
+              }
+            });
+            updateStmt.finalize();
+
+            db.run(
+              "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, 'Razorpay (Online)', 'Paid', bookingTime, expiryTime, 'pending']
+            );
+
+            const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
+            db.run(
+              "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
+              [txId, 'sale', `Online Order - ${customerName}`, totalAmount, bookingTime, items.map(i => `${i.name} x${i.quantity}`).join(', ')]
+            );
+
+            if (lockId) {
+              db.run("DELETE FROM locks WHERE id = ?", [lockId]);
             }
-            res.json({ success: true, bookingId: id });
+
+            db.run("COMMIT", (commitErr) => {
+              if (commitErr) {
+                db.run("ROLLBACK");
+                return res.status(500).json({ error: 'Failed to record online booking.' });
+              }
+              res.json({ success: true, bookingId: id });
+            });
           });
         });
       });
@@ -884,6 +1000,7 @@ app.post('/api/bookings', (req, res) => {
 
     let stockIssues = [];
     items.forEach(cItem => {
+      if (cItem.foodItemId === 'FD-SPECIAL') return;
       const food = catalog.find(f => f.id === cItem.foodItemId);
       if (!food || food.stock < cItem.quantity) {
         stockIssues.push(`${cItem.name} (Only ${food ? food.stock : 0} available)`);
@@ -894,47 +1011,61 @@ app.post('/api/bookings', (req, res) => {
       return res.status(409).json({ error: 'Stock deficit detected.', details: stockIssues });
     }
 
-    // 2. Perform booking insertion and stock reduction
-    const bookingTime = new Date().toISOString();
-    const expiryTime = new Date(Date.now() + 5 * 3600 * 1000).toISOString(); // 5 Hours
-
-    db.serialize(() => {
-      // Begin transaction manually in serialize
-      db.run("BEGIN TRANSACTION");
-
-      // Reduce item stock levels
-      const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
-      items.forEach(item => {
-        updateStmt.run([item.quantity, item.foodItemId]);
-      });
-      updateStmt.finalize();
-
-      // Insert booking record
-      db.run(
-        "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, paymentMethod, 'Paid', bookingTime, expiryTime, 'pending']
-      );
-
-      // Create cashier ledger transaction logs
-      const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
-      const txTitle = `Order Placed - ${customerName}`;
-      const txDetails = items.map(i => `${i.name} x${i.quantity}`).join(', ');
-      db.run(
-        "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
-        [txId, 'sale', txTitle, totalAmount, bookingTime, txDetails]
-      );
-
-      // Release the temporary lock
-      if (lockId) {
-        db.run("DELETE FROM locks WHERE id = ?", [lockId]);
+    db.get("SELECT value FROM settings WHERE key = 'account_details'", (err, settingsRow) => {
+      let ticketHours = 5;
+      if (!err && settingsRow) {
+        try {
+          const config = JSON.parse(settingsRow.value);
+          if (config.ticketExpiryHours) {
+            ticketHours = parseFloat(config.ticketExpiryHours);
+          }
+        } catch (e) {}
       }
 
-      db.run("COMMIT", (commitErr) => {
-        if (commitErr) {
-          db.run("ROLLBACK");
-          return res.status(500).json({ error: 'Failed to place booking transaction.' });
+      // 2. Perform booking insertion and stock reduction
+      const bookingTime = new Date().toISOString();
+      const expiryTime = new Date(Date.now() + ticketHours * 3600 * 1000).toISOString();
+
+      db.serialize(() => {
+        // Begin transaction manually in serialize
+        db.run("BEGIN TRANSACTION");
+
+        // Reduce item stock levels
+        const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
+        items.forEach(item => {
+          if (item.foodItemId !== 'FD-SPECIAL') {
+            updateStmt.run([item.quantity, item.foodItemId]);
+          }
+        });
+        updateStmt.finalize();
+
+        // Insert booking record
+        db.run(
+          "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, paymentMethod, 'Paid', bookingTime, expiryTime, 'pending']
+        );
+
+        // Create cashier ledger transaction logs
+        const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
+        const txTitle = `Order Placed - ${customerName}`;
+        const txDetails = items.map(i => `${i.name} x${i.quantity}`).join(', ');
+        db.run(
+          "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
+          [txId, 'sale', txTitle, totalAmount, bookingTime, txDetails]
+        );
+
+        // Release the temporary lock
+        if (lockId) {
+          db.run("DELETE FROM locks WHERE id = ?", [lockId]);
         }
-        res.json({ success: true, bookingId: id });
+
+        db.run("COMMIT", (commitErr) => {
+          if (commitErr) {
+            db.run("ROLLBACK");
+            return res.status(500).json({ error: 'Failed to place booking transaction.' });
+          }
+          res.json({ success: true, bookingId: id });
+        });
       });
     });
   });

@@ -144,6 +144,7 @@ const AdminState = {
         // Quietly update reports / dashboard without clearing active UI states
         this.updateDashboardMetricsOnly();
         this.updateSalesReportTable();
+        this.updateHistoryTableOnly();
       } catch (e) {
         console.warn("Auto-poller failed:", e);
       }
@@ -262,7 +263,7 @@ const AdminState = {
     });
 
     // Admin Tab Navigation Buttons
-    const tabs = [1, 2, 3, 4, 5];
+    const tabs = [1, 2, 3, 4, 5, 6];
     tabs.forEach(tNum => {
       const btn = document.getElementById(`btn-admin-tab-${tNum}`);
       if (btn) {
@@ -291,8 +292,8 @@ const AdminState = {
 
       const bookingId = 'NC-' + Math.floor(100000 + Math.random() * 900000).toString();
       const grandTotal = this.posCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const tax = Math.round(grandTotal * 0.05);
-      const totalAmount = grandTotal + tax;
+      const tax = 0;
+      const totalAmount = grandTotal;
 
       const items = this.posCart.map(item => ({
         foodItemId: item.id,
@@ -382,6 +383,8 @@ const AdminState = {
       e.preventDefault();
       const name = document.getElementById('tab2-add-name').value.trim();
       const price = parseFloat(document.getElementById('tab2-add-price').value);
+      const offerPriceInput = document.getElementById('tab2-add-offer-price');
+      const offerPrice = offerPriceInput && offerPriceInput.value ? parseFloat(offerPriceInput.value) : null;
       const stock = parseInt(document.getElementById('tab2-add-stock').value, 10);
       const category = document.getElementById('tab2-add-category').value;
       const isveg = document.getElementById('tab2-add-isveg').value;
@@ -404,7 +407,8 @@ const AdminState = {
         category,
         isveg,
         image: imagePath,
-        details: desc
+        details: desc,
+        offerPrice
       };
 
       try {
@@ -425,6 +429,62 @@ const AdminState = {
         console.error(err);
       }
     });
+
+    // Food Image Upload trigger listener
+    const imgUploadInput = document.getElementById('btn-upload-food-image');
+    if (imgUploadInput) {
+      imgUploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+          alert("Image file too large! Please upload an image under 5MB.");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const base64Data = event.target.result;
+          const imageName = file.name;
+
+          try {
+            const res = await this.fetchWithAuth('/api/upload-image', {
+              method: 'POST',
+              body: JSON.stringify({ imageName, base64Data })
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const selectEl = document.getElementById('tab2-add-image');
+              if (selectEl) {
+                let exists = false;
+                for (let i = 0; i < selectEl.options.length; i++) {
+                  if (selectEl.options[i].value === data.imagePath) {
+                    exists = true;
+                    break;
+                  }
+                }
+                if (!exists) {
+                  const opt = document.createElement('option');
+                  opt.value = data.imagePath;
+                  opt.innerText = `${file.name} (Uploaded)`;
+                  selectEl.appendChild(opt);
+                }
+                selectEl.value = data.imagePath;
+              }
+              alert("Image uploaded successfully and selected!");
+            } else {
+              const errData = await res.json();
+              alert(`Image upload failed: ${errData.error}`);
+            }
+          } catch (err) {
+            console.error("Image upload request failed:", err);
+            alert("Error connecting to upload server endpoint.");
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
 
     // Report filters change
     document.getElementById('report-filter-item').addEventListener('change', () => this.updateSalesReportTable());
@@ -480,51 +540,95 @@ const AdminState = {
     // Part 3 Form: Log Usage
     document.getElementById('tab1-usage-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const ingId = document.getElementById('tab1-use-ing-id').value;
-      const qty = parseFloat(document.getElementById('tab1-use-qty').value);
+      const container = document.getElementById('usage-products-container');
+      if (!container) return;
 
-      if (!ingId) return alert("Select an ingredient first.");
+      const rows = container.querySelectorAll('.usage-row');
+      const usageData = [];
+      let duplicateFound = false;
+      let missingSelect = false;
 
-      const ing = this.ingredients.find(i => i.id === ingId);
-      if (!ing) return;
+      rows.forEach(row => {
+        const ingId = row.querySelector('.usage-ing-select').value;
+        const qty = parseFloat(row.querySelector('.usage-qty-input').value);
 
-      if (ing.stock < qty) {
-        return alert(`Deficit! Only ${ing.stock} ${ing.unit} available in storage.`);
+        if (!ingId) {
+          missingSelect = true;
+          return;
+        }
+
+        if (usageData.some(item => item.ingId === ingId)) {
+          duplicateFound = true;
+          return;
+        }
+
+        usageData.push({ ingId, qty });
+      });
+
+      if (missingSelect) return alert("Please select a raw material/product for all rows.");
+      if (duplicateFound) return alert("Duplicate ingredients selected. Please combine them into one row.");
+      if (usageData.length === 0) return;
+
+      // Validate stock levels before making any API updates
+      const updates = [];
+      for (let item of usageData) {
+        const ing = this.ingredients.find(i => i.id === item.ingId);
+        if (!ing) return;
+
+        if (ing.stock < item.qty) {
+          return alert(`Deficit! Only ${ing.stock} ${ing.unit} available for ${ing.name}.`);
+        }
+
+        const newStock = ing.stock - item.qty;
+        updates.push({ ing, qty: item.qty, newStock });
       }
 
-      const newStock = ing.stock - qty;
-
       try {
-        // Update ingredient stock
-        const resIng = await this.fetchWithAuth(`/api/ingredients/${ingId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ name: ing.name, stock: newStock, unit: ing.unit })
-        });
+        for (let up of updates) {
+          // Update ingredient stock
+          const resIng = await this.fetchWithAuth(`/api/ingredients/${up.ing.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name: up.ing.name, stock: up.newStock, unit: up.ing.unit })
+          });
 
-        if (resIng.ok) {
-          // Add ledger transaction with 0 cost
+          if (!resIng.ok) {
+            throw new Error(`Failed to update stock for ${up.ing.name}`);
+          }
+
+          // Add ledger transaction
           await this.fetchWithAuth('/api/ledger', {
             method: 'POST',
             body: JSON.stringify({
               type: 'expense',
-              title: `Used in Kitchen - ${ing.name}`,
+              title: `Used in Kitchen - ${up.ing.name}`,
               amount: 0,
-              details: `Used ${qty} ${ing.unit}`
+              details: `Used ${up.qty} ${up.ing.unit}`
             })
           });
-
-          e.target.reset();
-          await this.fetchIngredients();
-          await this.fetchTransactions();
-          this.renderTab(3);
-          alert("Kitchen usage logged successfully!");
-        } else {
-          alert("Failed to update ingredient stock.");
         }
+
+        // Download the unified usage slip
+        downloadUsageSlip(updates);
+
+        // Reset form to single row
+        container.innerHTML = '';
+        this.addKitchenUsageRow();
+
+        await this.fetchIngredients();
+        await this.fetchTransactions();
+        this.renderTab(3);
+        alert("Kitchen usage logged successfully! Slip downloaded.");
       } catch (err) {
         console.error(err);
+        alert("Error logging kitchen usage.");
       }
     });
+
+    // Wire up dynamic usage rows add button
+    const btnAddRow = document.getElementById('btn-usage-add-row');
+    if (btnAddRow) {
+      btnAddRow.addEventListener('click', () => this.addKitchenUsageRow());
+    }
 
     // Part 3 Form: Register New Material
     const addIngForm = document.getElementById('tab1-add-ing-form');
@@ -584,8 +688,9 @@ const AdminState = {
       const bank = document.getElementById('acc-bank-input').value.trim();
       const accNo = document.getElementById('acc-no-input').value.trim();
       const ifsc = document.getElementById('acc-ifsc-input').value.trim();
+      const ticketExpiryHours = parseInt(document.getElementById('acc-expiry-input').value, 10) || 5;
 
-      const payload = { name, upiId, bank, accNo, ifsc };
+      const payload = { name, upiId, bank, accNo, ifsc, ticketExpiryHours };
 
       try {
         const res = await this.fetchWithAuth('/api/settings', {
@@ -687,6 +792,137 @@ const AdminState = {
       });
     }
 
+    // Special Offer toggle and Form Submit
+    const toggleSoBtn = document.getElementById('btn-toggle-special-offer');
+    if (toggleSoBtn) {
+      toggleSoBtn.addEventListener('click', () => {
+        const form = document.getElementById('tab2-special-offer-form');
+        const chevron = document.getElementById('special-offer-chevron');
+        if (form.style.display === 'none') {
+          form.style.display = 'block';
+          chevron.style.transform = 'rotate(180deg)';
+        } else {
+          form.style.display = 'none';
+          chevron.style.transform = 'rotate(0deg)';
+        }
+      });
+    }
+
+    const soForm = document.getElementById('tab2-special-offer-form');
+    if (soForm) {
+      soForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const active = document.getElementById('so-active').checked;
+        const title = document.getElementById('so-title').value.trim();
+        const desc = document.getElementById('so-desc').value.trim();
+        const price = parseFloat(document.getElementById('so-price').value) || 0;
+        const image = document.getElementById('so-image-select').value;
+
+        try {
+          const res = await this.fetchWithAuth('/api/special-offer', {
+            method: 'POST',
+            body: JSON.stringify({ active, title, desc, price, image })
+          });
+          if (res.ok) {
+            document.getElementById('tab2-special-offer-form').style.display = 'none';
+            document.getElementById('special-offer-chevron').style.transform = 'rotate(0deg)';
+            alert("Special offer settings successfully updated!");
+            
+            // Reload Tab 2 to prefill values
+            this.renderTab(2);
+          } else {
+            const errData = await res.json();
+            alert(`Failed to save special offer settings: ${errData.error}`);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    // Stop Special Offer Button Listener
+    const btnStopSo = document.getElementById('btn-stop-special-offer');
+    if (btnStopSo) {
+      btnStopSo.addEventListener('click', async () => {
+        const title = document.getElementById('so-title').value.trim() || 'Special Hills Combo';
+        const desc = document.getElementById('so-desc').value.trim();
+        const price = parseFloat(document.getElementById('so-price').value) || 0;
+        const image = document.getElementById('so-image-select').value;
+
+        try {
+          const res = await this.fetchWithAuth('/api/special-offer', {
+            method: 'POST',
+            body: JSON.stringify({ active: false, title, desc, price, image })
+          });
+          if (res.ok) {
+            document.getElementById('so-active').checked = false;
+            document.getElementById('tab2-special-offer-form').style.display = 'none';
+            document.getElementById('special-offer-chevron').style.transform = 'rotate(0deg)';
+            alert("Special offer promotion stopped and deactivated!");
+            this.renderTab(2);
+          } else {
+            alert("Failed to deactivate special offer.");
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    // Special Offer Image Upload trigger listener
+    const soImgUploadInput = document.getElementById('btn-upload-so-image');
+    if (soImgUploadInput) {
+      soImgUploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+          alert("Image file too large! Please upload an image under 5MB.");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const base64Data = event.target.result;
+          const imageName = file.name;
+
+          try {
+            const res = await this.fetchWithAuth('/api/upload-image', {
+              method: 'POST',
+              body: JSON.stringify({ imageName, base64Data })
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const selectEl = document.getElementById('so-image-select');
+              if (selectEl) {
+                let exists = false;
+                for (let i = 0; i < selectEl.options.length; i++) {
+                  if (selectEl.options[i].value === data.imagePath) {
+                    exists = true;
+                    break;
+                  }
+                }
+                if (!exists) {
+                  const opt = document.createElement('option');
+                  opt.value = data.imagePath;
+                  opt.innerText = `${file.name} (Uploaded)`;
+                  selectEl.appendChild(opt);
+                }
+                selectEl.value = data.imagePath;
+              }
+            } else {
+              const errData = await res.json();
+              alert(`Error: ${errData.error}`);
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
     // Manual backup JSON
     document.getElementById('btn-backup-db').addEventListener('click', async () => {
       try {
@@ -744,6 +980,51 @@ const AdminState = {
         document.querySelectorAll('.ledger-row-cb').forEach(cb => {
           cb.checked = checked;
         });
+      });
+    }
+
+    // Part 6 Unified History listeners
+    const histFilter = document.getElementById('history-filter-type');
+    if (histFilter) histFilter.addEventListener('change', () => this.updateHistoryTableOnly());
+    
+    const histSearch = document.getElementById('history-search-input');
+    if (histSearch) histSearch.addEventListener('input', () => this.updateHistoryTableOnly());
+    
+    const histExport = document.getElementById('btn-export-history-csv');
+    if (histExport) histExport.addEventListener('click', () => this.exportUnifiedHistoryCSV());
+
+    // Part 6 Sub-tabs navigation
+    const btnSubHist = document.getElementById('btn-subtab-history');
+    const btnSubSales = document.getElementById('btn-subtab-sales');
+    if (btnSubHist && btnSubSales) {
+      btnSubHist.addEventListener('click', () => {
+        btnSubHist.classList.add('active');
+        btnSubHist.style.color = 'var(--text-main)';
+        btnSubHist.style.borderBottom = '2px solid var(--accent)';
+        
+        btnSubSales.classList.remove('active');
+        btnSubSales.style.color = 'var(--text-muted)';
+        btnSubSales.style.borderBottom = 'none';
+
+        const viewHist = document.getElementById('part6-history-view');
+        if (viewHist) viewHist.style.display = 'flex';
+        const viewSales = document.getElementById('part6-sales-view');
+        if (viewSales) viewSales.style.display = 'none';
+      });
+
+      btnSubSales.addEventListener('click', () => {
+        btnSubSales.classList.add('active');
+        btnSubSales.style.color = 'var(--text-main)';
+        btnSubSales.style.borderBottom = '2px solid var(--accent)';
+        
+        btnSubHist.classList.remove('active');
+        btnSubHist.style.color = 'var(--text-muted)';
+        btnSubHist.style.borderBottom = 'none';
+
+        const viewHist = document.getElementById('part6-history-view');
+        if (viewHist) viewHist.style.display = 'none';
+        const viewSales = document.getElementById('part6-sales-view');
+        if (viewSales) viewSales.style.display = 'block';
       });
     }
   },
@@ -810,6 +1091,57 @@ const AdminState = {
     }
   },
 
+  addKitchenUsageRow(ingId = '', qty = '') {
+    const container = document.getElementById('usage-products-container');
+    if (!container) return;
+
+    const row = document.createElement('div');
+    row.className = 'usage-row';
+    row.style.display = 'flex';
+    row.style.gap = '0.5rem';
+    row.style.alignItems = 'center';
+
+    let options = '<option value="">-- Select Material --</option>';
+    this.ingredients.forEach(i => {
+      options += `<option value="${i.id}" ${i.id === ingId ? 'selected' : ''}>${i.name} (Remaining: ${i.stock} ${i.unit})</option>`;
+    });
+
+    row.innerHTML = `
+      <select class="usage-ing-select" required style="flex: 1.5; padding: 0.5rem; background: var(--bg-dark); border: 1px solid var(--border-dark); color: #fff; border-radius: 8px; font-size: 0.85rem; height: 38px;">
+        ${options}
+      </select>
+      <input type="number" step="0.1" class="usage-qty-input" placeholder="Qty" min="0.1" ${qty ? `value="${qty}"` : ''} required style="flex: 1; padding: 0.5rem; background: var(--bg-dark); border: 1px solid var(--border-dark); color: #fff; border-radius: 8px; font-size: 0.85rem; height: 38px; text-align: center;">
+      <button type="button" class="btn-sm btn-remove-usage-row" style="background: rgba(234,67,53,0.1); color: #ea4335; border: 1px solid rgba(234,67,53,0.2); width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 8px; cursor: pointer;">
+        <i class="fas fa-trash"></i>
+      </button>
+    `;
+
+    row.querySelector('.btn-remove-usage-row').addEventListener('click', () => {
+      if (container.querySelectorAll('.usage-row').length > 1) {
+        row.remove();
+      } else {
+        alert("At least one product is required.");
+      }
+    });
+
+    container.appendChild(row);
+  },
+
+  updateKitchenUsageSelects() {
+    const container = document.getElementById('usage-products-container');
+    if (!container) return;
+
+    const selects = container.querySelectorAll('.usage-ing-select');
+    selects.forEach(select => {
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- Select Material --</option>';
+      this.ingredients.forEach(i => {
+        select.innerHTML += `<option value="${i.id}" ${i.id === currentVal ? 'selected' : ''}>${i.name} (Remaining: ${i.stock} ${i.unit})</option>`;
+      });
+      select.value = currentVal;
+    });
+  },
+
   renderTab(tNum) {
     // Toggle active tab buttons
     document.querySelectorAll('.admin-tab-btn').forEach(btn => {
@@ -832,6 +1164,8 @@ const AdminState = {
       this.renderTab4();
     } else if (tNum === 5) {
       this.renderTab5();
+    } else if (tNum === 6) {
+      this.renderTab6();
     }
   },
 
@@ -850,10 +1184,16 @@ const AdminState = {
       this.foodItems.forEach(f => {
         const card = document.createElement('div');
         card.className = `pos-item-card ${f.stock === 0 ? 'disabled' : ''}`;
+        
+        const hasOffer = f.offerPrice && f.offerPrice < f.price;
+        const priceHTML = hasOffer 
+          ? `<span style="text-decoration: line-through; color: var(--text-muted); margin-right: 0.25rem;">₹${f.price}</span><span style="font-weight:700; color:var(--accent);">₹${f.offerPrice}</span>` 
+          : `<span style="font-weight:700; color:var(--accent);">₹${f.price}</span>`;
+
         card.innerHTML = `
           <div class="pos-item-title">${f.name}</div>
           <div class="flex justify-between align-center" style="margin-top: 0.5rem; font-size: 0.75rem;">
-            <span style="font-weight:700; color:var(--accent);">₹${f.price}</span>
+            <span>${priceHTML}</span>
             <span style="color:var(--text-muted);">${f.stock > 0 ? f.stock + ' left' : 'OUT'}</span>
           </div>
         `;
@@ -876,10 +1216,11 @@ const AdminState = {
       }
       existing.quantity++;
     } else {
+      const activePrice = (food.offerPrice && food.offerPrice < food.price) ? food.offerPrice : food.price;
       this.posCart.push({
         id: food.id,
         name: food.name,
-        price: food.price,
+        price: activePrice,
         quantity: 1
       });
     }
@@ -948,8 +1289,8 @@ const AdminState = {
       list.appendChild(row);
     });
 
-    const tax = Math.round(subtotal * 0.05);
-    const total = subtotal + tax;
+    const tax = 0;
+    const total = subtotal;
 
     subTotalSpan.innerText = `₹${subtotal}`;
     taxSpan.innerText = `₹${tax}`;
@@ -971,7 +1312,13 @@ const AdminState = {
         tr.innerHTML = `
           <td><img src="assets/${imgName}" style="width:36px; height:36px; border-radius:6px; object-fit:cover;" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2236%22 height=%2236%22><rect width=%2236%22 height=%2236%22 fill=%22%23222%22/></svg>'"></td>
           <td><strong>${f.name}</strong><br><span style="font-size:0.7rem; color:var(--text-muted);">${f.category} | ${f.isveg}</span></td>
-          <td>₹${f.price}</td>
+          <td>
+            ₹${f.price}
+            <div style="display:flex; align-items:center; gap:0.25rem; margin-top:0.25rem;">
+              <span style="font-size:0.7rem; color:var(--text-muted);">Offer:</span>
+              <input type="number" class="offer-price-inline-edit" data-id="${f.id}" value="${f.offerPrice !== undefined && f.offerPrice !== null ? f.offerPrice : ''}" placeholder="None" style="width:55px; padding:0.15rem 0.25rem; font-size:0.75rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
+            </div>
+          </td>
           <td>
             <div style="display:flex; align-items:center; gap:0.4rem;">
               <input type="number" class="stock-inline-edit" data-id="${f.id}" value="${f.stock}" style="width:55px; padding:0.25rem; font-size:0.8rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
@@ -985,8 +1332,13 @@ const AdminState = {
 
         tr.querySelector('.btn-save-stock').addEventListener('click', async () => {
           const inp = tr.querySelector('.stock-inline-edit');
+          const offerInp = tr.querySelector('.offer-price-inline-edit');
           const newStock = parseInt(inp.value, 10);
+          const newOfferStr = offerInp.value.trim();
+          const newOfferPrice = newOfferStr === '' ? null : parseFloat(newOfferStr);
+
           if (isNaN(newStock) || newStock < 0) return alert("Invalid stock quantity");
+          if (newOfferPrice !== null && (isNaN(newOfferPrice) || newOfferPrice < 0)) return alert("Invalid offer price");
           
           try {
             const res = await this.fetchWithAuth(`/api/food-items/${f.id}`, {
@@ -998,7 +1350,8 @@ const AdminState = {
                 category: f.category,
                 isveg: f.isveg,
                 image: f.image,
-                details: f.details
+                details: f.details,
+                offerPrice: newOfferPrice
               })
             });
             if (res.ok) {
@@ -1032,18 +1385,45 @@ const AdminState = {
       });
     }
 
-    // Populate Report filter food item list
-    const filterItemSelect = document.getElementById('report-filter-item');
-    if (filterItemSelect) {
-      const currentVal = filterItemSelect.value;
-      filterItemSelect.innerHTML = '<option value="All">All Items</option>';
-      this.foodItems.forEach(f => {
-        filterItemSelect.innerHTML += `<option value="${f.id}">${f.name}</option>`;
-      });
-      filterItemSelect.value = currentVal;
-    }
 
-    this.updateSalesReportTable();
+
+    // Prefill Special Offer config details
+    fetch('/api/special-offer')
+      .then(res => res.json())
+      .then(offer => {
+        if (offer) {
+          const activeCB = document.getElementById('so-active');
+          if (activeCB) activeCB.checked = !!offer.active;
+          
+          const titleInput = document.getElementById('so-title');
+          if (titleInput) titleInput.value = offer.title || '';
+          
+          const descInput = document.getElementById('so-desc');
+          if (descInput) descInput.value = offer.desc || '';
+          
+          const priceInput = document.getElementById('so-price');
+          if (priceInput) priceInput.value = offer.price !== undefined ? offer.price : 90;
+          
+          const selectEl = document.getElementById('so-image-select');
+          if (selectEl && offer.image) {
+            let exists = false;
+            for (let i = 0; i < selectEl.options.length; i++) {
+              if (selectEl.options[i].value === offer.image) {
+                exists = true;
+                break;
+              }
+            }
+            if (!exists) {
+              const opt = document.createElement('option');
+              opt.value = offer.image;
+              opt.innerText = `${offer.image.split('/').pop()} (Saved)`;
+              selectEl.appendChild(opt);
+            }
+            selectEl.value = offer.image;
+          }
+        }
+      })
+      .catch(e => console.warn("Failed to fetch special offer config:", e));
   },
 
   renderTab3() {
@@ -1052,50 +1432,21 @@ const AdminState = {
     if (ingTableBody) {
       ingTableBody.innerHTML = '';
       if (this.ingredients.length === 0) {
-        ingTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No materials cataloged.</td></tr>`;
+        ingTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">No materials cataloged.</td></tr>`;
       }
       this.ingredients.forEach(i => {
         const tr = document.createElement('tr');
         const formattedDate = i.lastPurchaseDate ? new Date(i.lastPurchaseDate).toLocaleString() : 'N/A';
         tr.innerHTML = `
           <td><strong>${i.name}</strong></td>
-          <td>${i.id}</td>
           <td>
-            <div style="display:flex; align-items:center; gap:0.4rem;">
-              <input type="number" step="0.1" class="ing-stock-inline-edit" data-id="${i.id}" value="${i.stock}" style="width:70px; padding:0.25rem; font-size:0.8rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
-              <span style="font-size:0.8rem; color:var(--text-muted);">${i.unit}</span>
-              <button class="btn-sm btn-save-ing-stock" data-id="${i.id}" style="padding:0.25rem 0.4rem; font-size:0.75rem;"><i class="fas fa-save"></i></button>
-            </div>
+            <span style="font-size:0.9rem; font-weight: 600;">${i.stock} ${i.unit}</span>
           </td>
           <td style="font-size: 0.85rem; color: var(--text-muted);">${formattedDate}</td>
           <td>
             <button class="btn-sm btn-delete-ing" data-id="${i.id}" style="padding:0.3rem 0.5rem; background:rgba(234,67,53,0.1); color:#ea4335; border:1px solid rgba(234,67,53,0.2);"><i class="fas fa-trash"></i></button>
           </td>
         `;
-        
-        tr.querySelector('.btn-save-ing-stock').addEventListener('click', async () => {
-          const inp = tr.querySelector('.ing-stock-inline-edit');
-          const newStock = parseFloat(inp.value);
-          if (isNaN(newStock) || newStock < 0) return alert("Invalid stock quantity");
-          
-          try {
-            const res = await this.fetchWithAuth(`/api/ingredients/${i.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({
-                name: i.name,
-                stock: newStock,
-                unit: i.unit
-              })
-            });
-            if (res.ok) {
-              await this.fetchIngredients();
-              this.renderTab(3);
-              alert("Material stock updated successfully!");
-            }
-          } catch (err) {
-            console.error(err);
-          }
-        });
 
         tr.querySelector('.btn-delete-ing').addEventListener('click', async () => {
           if (!confirm(`Delete ${i.name} from inventory?`)) return;
@@ -1122,23 +1473,24 @@ const AdminState = {
 
     // Populate log forms selectors
     const purSelect = document.getElementById('tab1-pur-ing-id');
-    const useSelect = document.getElementById('tab1-use-ing-id');
-    
-    if (purSelect && useSelect) {
+    if (purSelect) {
       const currentPur = purSelect.value;
-      const currentUse = useSelect.value;
-
       purSelect.innerHTML = '<option value="">-- Choose Material --</option>';
-      useSelect.innerHTML = '<option value="">-- Choose Material --</option>';
-
       this.ingredients.forEach(i => {
-        const opt = `<option value="${i.id}">${i.name} (${i.unit})</option>`;
-        purSelect.innerHTML += opt;
-        useSelect.innerHTML += opt;
+        purSelect.innerHTML += `<option value="${i.id}">${i.name} (Remaining: ${i.stock} ${i.unit})</option>`;
       });
-
       purSelect.value = currentPur;
-      useSelect.value = currentUse;
+    }
+
+    // Initialize or refresh multi-product kitchen usage rows
+    const container = document.getElementById('usage-products-container');
+    if (container) {
+      const existingRows = container.querySelectorAll('.usage-row');
+      if (existingRows.length === 0) {
+        this.addKitchenUsageRow();
+      } else {
+        this.updateKitchenUsageSelects();
+      }
     }
   },
 
@@ -1199,6 +1551,7 @@ const AdminState = {
     document.getElementById('acc-bank-input').value = this.accountDetails.bank || '';
     document.getElementById('acc-no-input').value = this.accountDetails.accNo || '';
     document.getElementById('acc-ifsc-input').value = this.accountDetails.ifsc || '';
+    document.getElementById('acc-expiry-input').value = this.accountDetails.ticketExpiryHours || 5;
 
     // Prefill Razorpay config details
     fetch('/api/payments/config')
@@ -1210,6 +1563,439 @@ const AdminState = {
         }
       })
       .catch(e => console.warn("Failed to fetch Razorpay config:", e));
+  },
+
+  renderTab6() {
+    this.updateHistoryTableOnly();
+    
+    // Populate Report filter food item list
+    const filterItemSelect = document.getElementById('report-filter-item');
+    if (filterItemSelect) {
+      const currentVal = filterItemSelect.value;
+      filterItemSelect.innerHTML = '<option value="All">All Items</option>';
+      this.foodItems.forEach(f => {
+        filterItemSelect.innerHTML += `<option value="${f.id}">${f.name}</option>`;
+      });
+      filterItemSelect.value = currentVal;
+    }
+
+    this.updateSalesReportTable();
+  },
+
+  updateHistoryTableOnly() {
+    const tbody = document.getElementById('history-tbody');
+    if (!tbody) return;
+
+    const filterType = document.getElementById('history-filter-type').value;
+    const searchQuery = document.getElementById('history-search-input').value.trim().toLowerCase();
+
+    // Compile events from transactions and bookings
+    let events = this.transactions.map(t => {
+      let category = 'other';
+      if (t.type === 'sale') {
+        category = 'sales';
+      } else if (t.type === 'purchase') {
+        category = 'purchases';
+      } else if (t.type === 'expense' && t.title.startsWith('Used in Kitchen -')) {
+        category = 'usages';
+      }
+
+      return {
+        id: t.id,
+        timestamp: t.timestamp,
+        category,
+        title: t.title,
+        amount: t.amount,
+        details: t.details || '',
+        rawTx: t
+      };
+    });
+
+    // Sort chronologically descending
+    events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Apply category filter
+    if (filterType !== 'All') {
+      events = events.filter(e => e.category === filterType);
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      events = events.filter(e => {
+        const titleMatch = e.title.toLowerCase().includes(searchQuery);
+        const detailsMatch = e.details.toLowerCase().includes(searchQuery);
+        const amountMatch = e.amount.toString().includes(searchQuery);
+        
+        let bookingMatch = false;
+        if (e.category === 'sales') {
+          const matchingBooking = this.bookings.find(b => b.bookingTime === e.timestamp);
+          if (matchingBooking) {
+            bookingMatch = matchingBooking.customerName.toLowerCase().includes(searchQuery) ||
+                           matchingBooking.customerPhone.toLowerCase().includes(searchQuery) ||
+                           matchingBooking.id.toLowerCase().includes(searchQuery);
+          }
+        }
+        return titleMatch || detailsMatch || amountMatch || bookingMatch;
+      });
+    }
+
+    tbody.innerHTML = '';
+    if (events.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:1rem;">No history events match filters.</td></tr>`;
+      return;
+    }
+
+    events.forEach(e => {
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      if (this.selectedHistoryId === e.id) {
+        tr.style.background = 'rgba(27, 77, 62, 0.2)';
+      }
+
+      const timeStr = new Date(e.timestamp).toLocaleString();
+      let catBadge = '';
+      if (e.category === 'sales') {
+        catBadge = '<span class="badge badge-success">SALE</span>';
+      } else if (e.category === 'purchases') {
+        catBadge = '<span class="badge badge-danger">PURCHASE</span>';
+      } else if (e.category === 'usages') {
+        catBadge = '<span class="badge badge-warning">USAGE</span>';
+      } else {
+        catBadge = '<span class="badge badge-info">OTHER</span>';
+      }
+
+      const isCredit = e.category === 'sales';
+      const amountVal = isCredit ? `+₹${e.amount}` : (e.category === 'purchases' ? `-₹${e.amount}` : `₹${e.amount}`);
+      
+      tr.innerHTML = `
+        <td style="font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
+        <td>${catBadge}</td>
+        <td><strong>${e.title}</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">${e.details}</span></td>
+        <td><strong class="${isCredit ? 'income' : (e.category === 'purchases' ? 'expense' : '')}">${amountVal}</strong></td>
+      `;
+
+      tr.addEventListener('click', () => {
+        this.selectedHistoryId = e.id;
+        tbody.querySelectorAll('tr').forEach(r => {
+          r.style.background = '';
+        });
+        tr.style.background = 'rgba(27, 77, 62, 0.2)';
+        this.showEventAuditDetails(e);
+      });
+
+      tbody.appendChild(tr);
+    });
+  },
+
+  showEventAuditDetails(item) {
+    const panel = document.getElementById('history-audit-panel');
+    if (!panel) return;
+
+    const timeStr = new Date(item.timestamp).toLocaleString();
+    let detailHTML = '';
+
+    if (item.category === 'sales') {
+      const b = this.bookings.find(booking => booking.bookingTime === item.timestamp);
+      if (b) {
+        const itemsList = b.items.map(i => `<li style="margin-bottom:0.25rem;">${i.name} x${i.quantity} <span style="color:var(--text-muted); font-size:0.75rem;">(₹${i.price} each)</span></li>`).join('');
+        const statusBadge = b.status === 'redeemed' 
+          ? `<span class="badge badge-success">Redeemed</span>` 
+          : (b.status === 'expired' ? `<span class="badge badge-danger">Expired</span>` : `<span class="badge badge-warning">Pending</span>`);
+
+        detailHTML = `
+          <div style="display:flex; flex-direction:column; gap:1rem;">
+            <div>
+              <span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Transaction ID</span>
+              <div style="font-size:1.1rem; font-weight:700; color:var(--accent);">${item.id}</div>
+            </div>
+            <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+              <strong>Customer Particulars</strong>
+              <div style="margin-top:0.25rem;">Name: ${b.customerName}</div>
+              <div>Phone: ${b.customerPhone}</div>
+              <div>Time: ${timeStr}</div>
+              <div style="margin-top:0.25rem;">Status: ${statusBadge}</div>
+              <div>Payment: ${b.paymentMethod} (${b.paymentStatus})</div>
+            </div>
+            <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+              <strong>Purchased Delights</strong>
+              <ul style="margin-top:0.25rem; padding-left:1.25rem;">
+                ${itemsList}
+              </ul>
+              <div style="font-size:1rem; font-weight:700; color:var(--accent); margin-top:0.5rem;">Total Amount: ₹${b.totalAmount}</div>
+            </div>
+            <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem; text-align:center;">
+              <strong>Ticket Verification QR</strong>
+              <div style="background:white; padding:0.75rem; border-radius:12px; display:inline-block; margin-top:0.5rem;">
+                <canvas id="history-qr-canvas" width="160" height="160"></canvas>
+              </div>
+            </div>
+            <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+              <button type="button" class="btn-sm btn-sm-accent w-full" id="btn-hist-download-receipt">
+                <i class="fas fa-print"></i> Download Bill Receipt
+              </button>
+              ${b.status === 'pending' ? `
+                <button type="button" class="btn-sm btn-sm-primary w-full" id="btn-hist-redeem-ticket" style="background:var(--success); color:#fff; border:none;">
+                  <i class="fas fa-check-circle"></i> Redeem Food Ticket
+                </button>
+              ` : ''}
+              <button type="button" class="btn-sm w-full" id="btn-hist-delete-tx" style="background:rgba(234,67,53,0.1); color:#ea4335; border:1px solid rgba(234,67,53,0.2);">
+                <i class="fas fa-trash-alt"></i> Delete Ledger Transaction
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        detailHTML = this.getGenericTxHTML(item);
+      }
+    } else if (item.category === 'purchases') {
+      detailHTML = `
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <div>
+            <span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Purchase ID</span>
+            <div style="font-size:1.1rem; font-weight:700; color:var(--accent);">${item.id}</div>
+          </div>
+          <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+            <strong>Purchase Particulars</strong>
+            <div style="margin-top:0.25rem;">Item: ${item.title}</div>
+            <div>Deducted Value: <strong style="color:var(--text-red); font-size:1.1rem;">-₹${item.amount}</strong></div>
+            <div>Invoice Details: ${item.details}</div>
+            <div>Registered Time: ${timeStr}</div>
+          </div>
+          <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+            <button type="button" class="btn-sm w-full" id="btn-hist-delete-tx" style="background:rgba(234,67,53,0.1); color:#ea4335; border:1px solid rgba(234,67,53,0.2);">
+              <i class="fas fa-trash-alt"></i> Delete Ledger Transaction
+            </button>
+          </div>
+        </div>
+      `;
+    } else if (item.category === 'usages') {
+      const group = this.transactions.filter(tx => 
+        tx.type === 'expense' && 
+        tx.title.startsWith('Used in Kitchen -') && 
+        Math.abs(new Date(tx.timestamp) - new Date(item.timestamp)) < 2000
+      );
+
+      const usageList = group.map(tx => `
+        <li style="margin-bottom:0.25rem;">
+          <strong>${tx.title.replace('Used in Kitchen - ', '')}</strong>: ${tx.details.replace('Used ', '')}
+        </li>
+      `).join('');
+
+      detailHTML = `
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <div>
+            <span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Usage Batch Log</span>
+            <div style="font-size:1.1rem; font-weight:700; color:var(--accent);">${item.id}</div>
+          </div>
+          <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+            <strong>Deducted Ingredients Bullet List</strong>
+            <ul style="margin-top:0.5rem; padding-left:1.25rem; line-height:1.6;">
+              ${usageList}
+            </ul>
+            <div style="margin-top:0.75rem; font-size:0.8rem; color:var(--text-muted);">Time Logged: ${timeStr}</div>
+          </div>
+          <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+            <button type="button" class="btn-sm w-full" id="btn-hist-delete-tx" style="background:rgba(234,67,53,0.1); color:#ea4335; border:1px solid rgba(234,67,53,0.2);">
+              <i class="fas fa-trash-alt"></i> Delete Ledger Transaction
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      detailHTML = this.getGenericTxHTML(item);
+    }
+
+    panel.innerHTML = detailHTML;
+
+    if (item.category === 'sales') {
+      const b = this.bookings.find(booking => booking.bookingTime === item.timestamp);
+      if (b) {
+        const canvas = document.getElementById('history-qr-canvas');
+        if (canvas) {
+          const qrData = {
+            id: b.id,
+            name: b.customerName,
+            phone: b.customerPhone,
+            pk: b.passkey,
+            items: b.items.map(i => ({
+              fid: i.foodItemId,
+              name: i.name,
+              qty: i.quantity,
+              price: i.price
+            })),
+            total: b.totalAmount,
+            pMethod: b.paymentMethod,
+            bTime: b.bookingTime,
+            eTime: b.expiryTime,
+            status: b.status
+          };
+          const qrValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(qrData))));
+          new QRious({
+            element: canvas,
+            value: qrValue,
+            size: 160,
+            background: '#ffffff',
+            foreground: '#1b4d3e'
+          });
+        }
+
+        const btnReceipt = document.getElementById('btn-hist-download-receipt');
+        if (btnReceipt) {
+          btnReceipt.addEventListener('click', () => downloadReceipt(b));
+        }
+
+        const btnRedeem = document.getElementById('btn-hist-redeem-ticket');
+        if (btnRedeem) {
+          btnRedeem.addEventListener('click', async () => {
+            if (!confirm(`Redeem and close this food ticket ${b.id}?`)) return;
+            try {
+              const res = await this.fetchWithAuth('/api/bookings/redeem', {
+                method: 'POST',
+                body: JSON.stringify({ id: b.id })
+              });
+              if (res.ok) {
+                alert("Ticket successfully redeemed!");
+                await this.fetchBookings();
+                const refreshed = this.bookings.find(booking => booking.id === b.id);
+                if (refreshed) {
+                  const updatedItem = { ...item, timestamp: refreshed.bookingTime };
+                  this.showEventAuditDetails(updatedItem);
+                }
+                this.updateHistoryTableOnly();
+              } else {
+                const err = await res.json();
+                alert(`Redemption failed: ${err.error}`);
+              }
+            } catch (err) {
+              console.error(err);
+            }
+          });
+        }
+      }
+    }
+
+    const btnDelete = document.getElementById('btn-hist-delete-tx');
+    if (btnDelete) {
+      btnDelete.addEventListener('click', async () => {
+        if (!confirm("Are you sure you want to delete this transaction from the ledger?")) return;
+        try {
+          const res = await this.fetchWithAuth(`/api/ledger/${item.id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            alert("Ledger transaction deleted successfully.");
+            this.selectedHistoryId = null;
+            panel.innerHTML = `
+              <div style="text-align: center; color: var(--text-muted); padding: 2rem 0;">
+                <i class="fas fa-info-circle" style="font-size: 2rem; margin-bottom: 0.75rem; display: block; color: var(--text-muted);"></i>
+                Select any event row on the left to view detailed audit logs, print receipts, view QR codes, or modify logs.
+              </div>
+            `;
+            await this.fetchTransactions();
+            this.updateHistoryTableOnly();
+          } else {
+            alert("Failed to delete transaction.");
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+  },
+
+  getGenericTxHTML(item) {
+    const isCredit = item.category === 'sales' || item.rawTx.type === 'income' || item.rawTx.type === 'sale';
+    const amountVal = isCredit ? `+₹${item.amount}` : `-₹${item.amount}`;
+    const timeStr = new Date(item.timestamp).toLocaleString();
+    return `
+      <div style="display:flex; flex-direction:column; gap:1rem;">
+        <div>
+          <span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Transaction ID</span>
+          <div style="font-size:1.1rem; font-weight:700; color:var(--accent);">${item.id}</div>
+        </div>
+        <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+          <strong>Transaction Particulars</strong>
+          <div style="margin-top:0.25rem;">Title: ${item.title}</div>
+          <div>Type: <span class="badge badge-info">${item.rawTx.type.toUpperCase()}</span></div>
+          <div>Amount: <strong class="${isCredit ? 'income' : 'expense'}" style="font-size:1.1rem;">${amountVal}</strong></div>
+          <div>Details: ${item.details || 'N/A'}</div>
+          <div>Time: ${timeStr}</div>
+        </div>
+        <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem;">
+          <button type="button" class="btn-sm w-full" id="btn-hist-delete-tx" style="background:rgba(234,67,53,0.1); color:#ea4335; border:1px solid rgba(234,67,53,0.2);">
+            <i class="fas fa-trash-alt"></i> Delete Ledger Transaction
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  exportUnifiedHistoryCSV() {
+    const filterType = document.getElementById('history-filter-type').value;
+    const searchQuery = document.getElementById('history-search-input').value.trim().toLowerCase();
+
+    let events = this.transactions.map(t => {
+      let category = 'other';
+      if (t.type === 'sale') {
+        category = 'sales';
+      } else if (t.type === 'purchase') {
+        category = 'purchases';
+      } else if (t.type === 'expense' && t.title.startsWith('Used in Kitchen -')) {
+        category = 'usages';
+      }
+
+      return {
+        id: t.id,
+        timestamp: t.timestamp,
+        category,
+        title: t.title,
+        amount: t.amount,
+        details: t.details || '',
+        rawTx: t
+      };
+    });
+
+    events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    if (filterType !== 'All') {
+      events = events.filter(e => e.category === filterType);
+    }
+
+    if (searchQuery) {
+      events = events.filter(e => {
+        const titleMatch = e.title.toLowerCase().includes(searchQuery);
+        const detailsMatch = e.details.toLowerCase().includes(searchQuery);
+        const amountMatch = e.amount.toString().includes(searchQuery);
+        
+        let bookingMatch = false;
+        if (e.category === 'sales') {
+          const matchingBooking = this.bookings.find(b => b.bookingTime === e.timestamp);
+          if (matchingBooking) {
+            bookingMatch = matchingBooking.customerName.toLowerCase().includes(searchQuery) ||
+                           matchingBooking.customerPhone.toLowerCase().includes(searchQuery) ||
+                           matchingBooking.id.toLowerCase().includes(searchQuery);
+          }
+        }
+        return titleMatch || detailsMatch || amountMatch || bookingMatch;
+      });
+    }
+
+    if (events.length === 0) return alert("Nothing to export.");
+
+    let csv = "Timestamp,Category,Transaction ID,Description/Summary,Amount,Details\n";
+    events.forEach(e => {
+      const time = new Date(e.timestamp).toLocaleString().replace(/"/g, '""');
+      const category = e.category.toUpperCase();
+      const amountVal = e.category === 'sales' ? `+${e.amount}` : (e.category === 'purchases' ? `-${e.amount}` : `${e.amount}`);
+      csv += `"${time}","${category}","${e.id}","${e.title.replace(/"/g, '""')}",${amountVal},"${e.details.replace(/"/g, '""')}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `n_cafe_unified_history_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
   },
 
   exportInventoryCSV() {
@@ -1254,13 +2040,46 @@ const AdminState = {
   }
 };
 
+// --- KITCHEN INGREDIENTS USAGE SLIP COMPILER (.TXT DOWNLOAD) ---
+function downloadUsageSlip(updates) {
+  if (!updates || updates.length === 0) return;
+  const timeStr = new Date().toLocaleString();
+
+  let detailsText = '';
+  updates.forEach(up => {
+    detailsText += `- ${up.ing.name}: ${up.qty} ${up.ing.unit} (Remaining: ${up.newStock.toFixed(1)} ${up.ing.unit})\n`;
+  });
+
+  const textContent = `
+==================================================
+        KITCHEN INGREDIENTS USAGE SLIP
+==================================================
+Date/Time:      ${timeStr}
+Logged Action:  Kitchen Usage (Expense)
+--------------------------------------------------
+Details of Materials Used:
+${detailsText}--------------------------------------------------
+Status:         Logged & Deducted from Storage
+==================================================
+`;
+
+  const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `kitchen_usage_slip_${new Date().toISOString().slice(0,10)}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 // --- WALK-IN RECEIPT / BILL COMPILER (.TXT DOWNLOAD) ---
 function downloadReceipt(booking) {
   if (!booking) return;
   
   const itemsText = booking.items.map(i => `${i.name.padEnd(25)} x${i.quantity.toString().padEnd(3)} - ₹${i.price * i.quantity}`).join('\n');
-  const tax = Math.round(booking.totalAmount - (booking.totalAmount / 1.05));
-  const sub = booking.totalAmount - tax;
+  const tax = 0;
+  const sub = booking.totalAmount;
   
   const textReceiptContent = `
 ==================================================
@@ -1277,7 +2096,6 @@ Delights Particulars:
 ${itemsText}
 --------------------------------------------------
 Subtotal:       ₹${sub}
-GST (5%):       ₹${tax}
 Total Paid:     ₹${booking.totalAmount}
 ==================================================
         Thank you for ordering at N Cafe!

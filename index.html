@@ -95,6 +95,24 @@
           </div>
         </div>
 
+        <!-- Special Offer Banner Section (Dynamic) -->
+        <div id="customer-special-offer-banner" class="special-offer-banner-card" style="display: none; margin-bottom: 2rem;">
+          <div class="special-offer-content">
+            <span class="special-offer-badge"><i class="fas fa-star"></i> Limited Time Offer Deal</span>
+            <h3 id="cust-offer-title">Special Hills Combo</h3>
+            <p id="cust-offer-desc">Masala Dosa + Misty Hills Filter Coffee combo at a special discount!</p>
+            <div class="special-offer-price-row">
+              <span class="special-offer-price" id="cust-offer-price">₹90</span>
+              <button class="special-offer-buy-btn" id="btn-cust-offer-buy" type="button">
+                <i class="fas fa-shopping-cart"></i> Add Combo to Cart
+              </button>
+            </div>
+          </div>
+          <div class="special-offer-image-container">
+            <img id="cust-offer-img" src="assets/south_indian_meals.png" alt="Special Combo Banner">
+          </div>
+        </div>
+
         <!-- Food Grid -->
         <div class="food-grid" id="food-menu-grid">
           <!-- Food items populated by JS -->
@@ -117,7 +135,7 @@
                 <span>Subtotal</span>
                 <span id="checkout-subtotal">₹0</span>
               </div>
-              <div class="flex justify-between" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+              <div class="flex justify-between" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; display: none;">
                 <span>GST (5%)</span>
                 <span id="checkout-tax">₹0</span>
               </div>
@@ -260,7 +278,7 @@
           <div id="ticket-overlay-expired" class="ticket-overlay expired" style="display: none;">
             <i class="fas fa-times-circle"></i>
             <h3>TICKET EXPIRED</h3>
-            <p>This order ticket has expired after the 5-hour limit and is no longer valid for counter pick-up.</p>
+            <p>This order ticket has expired after the <span id="ticket-limit-display">5</span>-hour limit and is no longer valid for counter pick-up.</p>
           </div>
           <div id="ticket-overlay-redeemed" class="ticket-overlay redeemed" style="display: none;">
             <i class="fas fa-check-circle"></i>
@@ -299,7 +317,7 @@
                   <span>Subtotal</span>
                   <span id="ticket-subtotal">₹0</span>
                 </div>
-                <div class="ticket-row">
+                <div class="ticket-row" style="display: none;">
                   <span>CGST/SGST (5%)</span>
                   <span id="ticket-tax">₹0</span>
                 </div>
@@ -388,7 +406,7 @@
         <span>Subtotal</span>
         <span id="cart-subtotal">₹0</span>
       </div>
-      <div class="cart-totals-row">
+      <div class="cart-totals-row" style="display: none;">
         <span>Canteen Tax (5% GST)</span>
         <span id="cart-tax">₹0</span>
       </div>

@@ -19,6 +19,16 @@ const CanteenState = {
     await this.fetchSettings();
     await this.fetchFoodCatalog();
     this.loadRazorpayScript();
+
+    // Bind click on Special Offer buy button
+    const buyBtn = document.getElementById('btn-cust-offer-buy');
+    if (buyBtn) {
+      buyBtn.addEventListener('click', () => {
+        addToCart('FD-SPECIAL');
+        toggleCartDrawer(true);
+      });
+    }
+
     renderFoodMenu('all');
     updateCartBadges();
   },
@@ -60,9 +70,53 @@ const CanteenState = {
       const res = await fetch('/api/food-items');
       if (res.ok) {
         this.foodItems = await res.json();
+        await this.loadSpecialOffer();
       }
     } catch (e) {
       console.error("Failed to load catalog from API:", e);
+    }
+  },
+
+  async loadSpecialOffer() {
+    try {
+      const res = await fetch('/api/special-offer');
+      if (res.ok) {
+        const offer = await res.json();
+        this.specialOffer = offer;
+        const banner = document.getElementById('customer-special-offer-banner');
+        if (banner) {
+          if (offer && offer.active) {
+            document.getElementById('cust-offer-title').textContent = offer.title || '';
+            document.getElementById('cust-offer-desc').textContent = offer.desc || '';
+            document.getElementById('cust-offer-price').textContent = `₹${offer.price}`;
+            
+            const img = document.getElementById('cust-offer-img');
+            if (img) {
+              img.src = offer.image || 'assets/south_indian_meals.png';
+            }
+            
+            banner.style.display = 'grid';
+            
+            const virtualItem = {
+              id: 'FD-SPECIAL',
+              name: offer.title || 'Special Offer Combo',
+              price: Number(offer.price) || 0,
+              image: offer.image || 'assets/south_indian_meals.png',
+              details: offer.desc || '',
+              category: 'Snacks',
+              isveg: 'Veg',
+              availableStock: 9999
+            };
+            this.foodItems = this.foodItems.filter(f => f.id !== 'FD-SPECIAL');
+            this.foodItems.push(virtualItem);
+          } else {
+            banner.style.display = 'none';
+            this.foodItems = this.foodItems.filter(f => f.id !== 'FD-SPECIAL');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load special offer settings:", e);
     }
   }
 };
@@ -122,7 +176,8 @@ function renderFoodMenu(filterCategory = 'all', searchQuery = '') {
   if (!menuGrid) return;
   menuGrid.innerHTML = '';
 
-  let filtered = CanteenState.foodItems;
+  // Filter out the special offer combo so it doesn't render in main list
+  let filtered = CanteenState.foodItems.filter(f => f.id !== 'FD-SPECIAL');
 
   if (filterCategory.toLowerCase() !== 'all') {
     filtered = filtered.filter(f => f.category.toLowerCase() === filterCategory.toLowerCase());
@@ -164,7 +219,9 @@ function renderFoodMenu(filterCategory = 'all', searchQuery = '') {
       <div class="food-card-info">
         <div class="food-card-title-row">
           <h3>${f.name}</h3>
-          <span class="food-card-price">₹${f.price}</span>
+          <span class="food-card-price">
+            ${(f.offerPrice && f.offerPrice < f.price) ? `<span style="text-decoration: line-through; color: var(--text-muted); font-size: 0.85em; margin-right: 0.5rem;">₹${f.price}</span><span style="color: var(--accent); font-weight: 800; font-size: 1.15em;">₹${f.offerPrice}</span>` : `₹${f.price}`}
+          </span>
         </div>
         <p class="food-card-desc">${f.details || 'Fresh daily special gourmet preparation.'}</p>
         
@@ -285,16 +342,23 @@ function renderCartItems() {
     const food = CanteenState.foodItems.find(f => f.id === cItem.id);
     if (!food) return;
 
-    const rowTotal = food.price * cItem.quantity;
+    const hasOffer = food.offerPrice && food.offerPrice < food.price;
+    const activePrice = hasOffer ? food.offerPrice : food.price;
+    const rowTotal = activePrice * cItem.quantity;
     subtotal += rowTotal;
 
     const row = document.createElement('div');
     row.className = 'cart-item';
+    
+    const priceDisplayHTML = hasOffer 
+      ? `<span style="text-decoration: line-through; color: var(--text-muted); margin-right: 0.4rem;">₹${food.price}</span><strong style="color: var(--accent);">₹${food.offerPrice}</strong>` 
+      : `₹${food.price}`;
+
     row.innerHTML = `
       <img src="${food.image}" alt="${food.name}" class="cart-item-img" onerror="this.src='https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500'">
       <div class="cart-item-detail">
         <div class="cart-item-name">${food.name}</div>
-        <div class="cart-item-price">₹${food.price} &times; ${cItem.quantity} = ₹${rowTotal}</div>
+        <div class="cart-item-price">${priceDisplayHTML} &times; ${cItem.quantity} = ₹${rowTotal}</div>
         <div class="cart-item-qty-control">
           <button onclick="adjustCartQty('${food.id}', -1); renderCartItems();" class="qty-btn"><i class="fas fa-minus"></i></button>
           <span style="font-weight: 600; min-width: 20px; text-align: center;">${cItem.quantity}</span>
@@ -308,8 +372,8 @@ function renderCartItems() {
     container.appendChild(row);
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
   if (subtotalDisplay) subtotalDisplay.innerText = `₹${subtotal}`;
   if (taxDisplay) taxDisplay.innerText = `₹${tax}`;
   if (totalDisplay) totalDisplay.innerText = `₹${total}`;
@@ -332,7 +396,9 @@ function openCheckoutSummary() {
   CanteenState.cart.forEach(cItem => {
     const food = CanteenState.foodItems.find(f => f.id === cItem.id);
     if (!food) return;
-    const rowTotal = food.price * cItem.quantity;
+    const hasOffer = food.offerPrice && food.offerPrice < food.price;
+    const activePrice = hasOffer ? food.offerPrice : food.price;
+    const rowTotal = activePrice * cItem.quantity;
     subtotal += rowTotal;
 
     const row = document.createElement('div');
@@ -340,14 +406,14 @@ function openCheckoutSummary() {
     row.style.fontSize = '0.85rem';
     row.style.marginBottom = '0.4rem';
     row.innerHTML = `
-      <span>${food.name} <strong style="color: var(--accent);">x${cItem.quantity}</strong></span>
+      <span>${food.name} <strong style="color: var(--accent);">x${cItem.quantity}</strong> ${hasOffer ? '<span style="font-size:0.75rem; color:var(--accent); background:rgba(212,163,115,0.15); padding:1px 5px; border-radius:10px; margin-left:4px;">Offer</span>' : ''}</span>
       <span>₹${rowTotal}</span>
     `;
     summary.appendChild(row);
   });
 
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
 
   document.getElementById('checkout-subtotal').innerText = `₹${subtotal}`;
   document.getElementById('checkout-tax').innerText = `₹${tax}`;
@@ -416,8 +482,8 @@ document.getElementById('checkout-form').addEventListener('submit', async (e) =>
               // Construct booking payload
               const subtotalText = document.getElementById('checkout-subtotal').innerText.replace('₹', '');
               const subtotal = parseFloat(subtotalText);
-              const tax = Math.round(subtotal * 0.05);
-              const total = subtotal + tax;
+              const tax = 0;
+              const total = subtotal;
 
               const itemsBreakdown = [];
               CanteenState.cart.forEach(cItem => {
@@ -659,18 +725,19 @@ async function finalizeCanteenOrder(paymentMethodText) {
   
   const subtotalText = document.getElementById('checkout-subtotal').innerText.replace('₹', '');
   const subtotal = parseFloat(subtotalText);
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
 
   const itemsBreakdown = [];
   CanteenState.cart.forEach(cItem => {
     const food = CanteenState.foodItems.find(f => f.id === cItem.id);
     if (food) {
+      const activePrice = (food.offerPrice && food.offerPrice < food.price) ? food.offerPrice : food.price;
       itemsBreakdown.push({
         foodItemId: food.id,
         name: food.name,
         quantity: cItem.quantity,
-        price: food.price
+        price: activePrice
       });
     }
   });
@@ -698,10 +765,11 @@ async function finalizeCanteenOrder(paymentMethodText) {
 
     if (res.ok) {
       const data = await res.json();
+      const ticketHours = CanteenState.accountDetails.ticketExpiryHours || 5;
       CanteenState.activeBooking = {
         ...payload,
         bookingTime: new Date().toISOString(),
-        expiryTime: new Date(Date.now() + 5 * 3600 * 1000).toISOString(),
+        expiryTime: new Date(Date.now() + ticketHours * 3600 * 1000).toISOString(),
         status: 'pending'
       };
 
@@ -756,8 +824,8 @@ function renderTicketPage() {
     itemsContainer.appendChild(row);
   });
 
-  const tax = Math.round(b.totalAmount - (b.totalAmount / 1.05));
-  const sub = b.totalAmount - tax;
+  const tax = 0;
+  const sub = b.totalAmount;
   document.getElementById('ticket-subtotal').innerText = `₹${sub}`;
   document.getElementById('ticket-tax').innerText = `₹${tax}`;
   document.getElementById('ticket-total').innerText = `₹${b.totalAmount}`;
@@ -798,6 +866,10 @@ function renderTicketPage() {
           const remainingMs = expiry - new Date();
 
           if (remainingMs <= 0) {
+            const limitDisplay = document.getElementById('ticket-limit-display');
+            if (limitDisplay) {
+              limitDisplay.innerText = CanteenState.accountDetails.ticketExpiryHours || 5;
+            }
             overlayExpired.style.display = 'flex';
             overlayRedeemed.style.display = 'none';
             timerDisplay.style.display = 'none';
@@ -876,10 +948,9 @@ function downloadReceipt(b) {
     content += `${i.name.padEnd(25)} x${i.quantity}  ₹${i.price * i.quantity}\n`;
   });
   content += `----------------------------------------\n`;
-  const tax = Math.round(b.totalAmount - (b.totalAmount / 1.05));
-  const sub = b.totalAmount - tax;
+  const tax = 0;
+  const sub = b.totalAmount;
   content += `Subtotal:                      ₹${sub}\n`;
-  content += `GST Tax (5%):                  ₹${tax}\n`;
   content += `Total Paid:                    ₹${b.totalAmount}\n`;
   content += `========================================\n`;
   content += `Simulated Prepaid order (UPI QR)\n`;
@@ -1028,10 +1099,11 @@ async function processRazorpayCheckout(bookingData, keyId) {
           CanteenState.currentLockId = null;
           CanteenState.saveCart();
 
+          const ticketHours = CanteenState.accountDetails.ticketExpiryHours || 5;
           CanteenState.activeBooking = {
             ...bookingData,
             bookingTime: new Date().toISOString(),
-            expiryTime: new Date(Date.now() + 5 * 3600 * 1000).toISOString(),
+            expiryTime: new Date(Date.now() + ticketHours * 3600 * 1000).toISOString(),
             status: 'pending'
           };
 
