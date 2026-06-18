@@ -49,6 +49,31 @@ class DB {
     }
   }
 
+  normalizeRow(row) {
+    if (!row) return row;
+    const mapping = {
+      customername: 'customerName',
+      customerphone: 'customerPhone',
+      totalamount: 'totalAmount',
+      bookingtime: 'bookingTime',
+      expirytime: 'expiryTime',
+      redeemedtime: 'redeemedTime',
+      paymentmethod: 'paymentMethod',
+      paymentstatus: 'paymentStatus',
+      fooditemid: 'foodItemId',
+      lastpurchasedate: 'lastPurchaseDate'
+    };
+    const newRow = {};
+    for (const key in row) {
+      if (mapping[key]) {
+        newRow[mapping[key]] = row[key];
+      } else {
+        newRow[key] = row[key];
+      }
+    }
+    return newRow;
+  }
+
   connect(callback) {
     if (this.isPostgres) {
       this.pgClient.connect((err) => {
@@ -132,7 +157,8 @@ class DB {
             if (err) {
               if (cb) cb(err);
             } else {
-              if (cb) cb(null, res.rows ? res.rows[0] : null);
+              const row = res.rows ? res.rows[0] : null;
+              if (cb) cb(null, this.normalizeRow(row));
             }
             resolve();
           });
@@ -158,7 +184,8 @@ class DB {
             if (err) {
               if (cb) cb(err);
             } else {
-              if (cb) cb(null, res.rows || []);
+              const rows = (res.rows || []).map(r => this.normalizeRow(r));
+              if (cb) cb(null, rows);
             }
             resolve();
           });
