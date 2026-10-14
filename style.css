@@ -1579,6 +1579,40 @@ main {
   gap: 1rem;
 }
 
+@media print {
+  body.printing-receipt > * {
+    visibility: hidden !important;
+  }
+
+  body.printing-receipt #receipt-popup-container,
+  body.printing-receipt #receipt-popup-container * {
+    visibility: visible !important;
+  }
+
+  body.printing-receipt #receipt-popup-container {
+    display: flex !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  body.printing-receipt .receipt-popup-card {
+    max-width: none !important;
+    width: 100% !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body.printing-receipt .receipt-popup-footer {
+    display: none !important;
+  }
+}
+
 .btn-popup {
   flex: 1;
   padding: 0.75rem;

@@ -1810,6 +1810,7 @@ function triggerScan(code) {
 
     // Automatic Redemption and Print Receipt trigger
     redeemBookingOrder(booking);
+    openReceiptPopup(booking);
     printBill(booking);
 
     feedbackSuccess.style.display = 'flex';
@@ -1874,40 +1875,11 @@ function closeReceiptPopup() {
 document.getElementById('btn-receipt-cancel').addEventListener('click', closeReceiptPopup);
 
 function printBill(booking) {
-  const printWindow = window.open('', '_blank', 'width=420,height=700');
-  if (!printWindow) {
-    console.warn('Automatic bill printing was blocked by the browser.');
-    return;
-  }
-
-  const items = booking.items.map(item => `
-    <tr><td>${escapePrintText(item.name)} x${item.quantity}</td><td>₹${item.price * item.quantity}</td></tr>
-  `).join('');
-
-  printWindow.document.write(`
-    <!doctype html><html><head><title>N Cafe Bill</title>
-    <style>
-      body { font: 14px Arial, sans-serif; color: #111; padding: 24px; }
-      h1 { text-align: center; font-size: 20px; margin: 0 0 16px; }
-      p { margin: 6px 0; } table { width: 100%; border-collapse: collapse; margin: 18px 0; }
-      td { padding: 6px 0; border-bottom: 1px solid #ddd; } td:last-child { text-align: right; }
-      .total { font-weight: bold; font-size: 16px; }
-    </style></head><body>
-    <h1>N Cafe Hills Kitchen</h1>
-    <p><strong>Ticket ID:</strong> ${escapePrintText(booking.id)}</p>
-    <p><strong>Customer:</strong> ${escapePrintText(booking.customerName)}</p>
-    <p><strong>Phone:</strong> ${escapePrintText(booking.customerPhone)}</p>
-    <p><strong>Order time:</strong> ${new Date(booking.bookingTime).toLocaleString()}</p>
-    <table>${items}</table>
-    <p>Subtotal: ₹${booking.totalAmount}</p>
-    <p class="total">Total Paid: ₹${booking.totalAmount}</p>
-    <p style="text-align:center;margin-top:24px;">Thank you for ordering at N Cafe!</p>
-    </body></html>
-  `);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.onafterprint = () => printWindow.close();
-  printWindow.print();
+  document.body.classList.add('printing-receipt');
+  window.setTimeout(() => {
+    window.print();
+    document.body.classList.remove('printing-receipt');
+  }, 150);
 }
 
 function escapePrintText(value) {
