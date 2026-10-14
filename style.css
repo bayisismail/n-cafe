@@ -1121,7 +1121,7 @@ main {
   color: var(--accent);
 }
 
-/* QR code styling */
+/* UPI QR payment styling */
 .qr-simulation-box {
   background: #fff;
   padding: 1.5rem;
@@ -2144,14 +2144,14 @@ footer span {
   border: 1px solid var(--border-dark) !important;
 }
 
-#qr-reader {
+#barcode-reader {
   border: 1.5px solid var(--border-dark) !important;
   border-radius: 16px !important;
   overflow: hidden;
   background: #000 !important;
 }
 
-#qr-reader__dashboard_section_csr button {
+#barcode-reader__dashboard_section_csr button {
   background: var(--primary) !important;
   border: 1px solid var(--primary-light) !important;
   color: var(--text-main) !important;
@@ -2166,18 +2166,18 @@ footer span {
   box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
 }
 
-#qr-reader__dashboard_section_csr button:hover {
+#barcode-reader__dashboard_section_csr button:hover {
   background: var(--primary-light) !important;
   border-color: var(--accent) !important;
 }
 
-#qr-reader__dashboard_section_csr a {
+#barcode-reader__dashboard_section_csr a {
   color: var(--accent) !important;
   font-size: 0.85rem !important;
   text-decoration: none !important;
 }
 
-#qr-reader__scan_region video {
+#barcode-reader__scan_region video {
   object-fit: cover !important;
   border-radius: 12px !important;
 }
@@ -2490,4 +2490,3 @@ footer span {
     height: 200px;
   }
 }
-

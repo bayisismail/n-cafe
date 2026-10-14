@@ -1446,7 +1446,7 @@ function renderTicketPage() {
   document.getElementById('ticket-tax').innerText = `₹${tax}`;
   document.getElementById('ticket-total').innerText = `₹${b.totalAmount}`;
 
-  renderTicketQR(b);
+  renderTicketBarcode(b);
   document.getElementById('barcode-num-text').innerText = b.id;
 
   // Bind new Download Ticket button click event
@@ -1519,8 +1519,8 @@ function generate100CharToken() {
   return token;
 }
 
-// Encode booking object into a self-contained string for QR scanning
-function encodeBookingToQRText(b) {
+// Encode booking object into a self-contained string for barcode scanning
+function encodeBookingToBarcodeText(b) {
   const data = {
     id: b.id,
     cName: b.customerName,
@@ -1543,11 +1543,11 @@ function encodeBookingToQRText(b) {
   return "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
 }
 
-// Decode booking object from QR code text
-function decodeBookingFromQRText(qrText) {
-  if (!qrText || !qrText.startsWith("NC-DATA:")) return null;
+// Decode booking object from barcode text
+function decodeBookingFromBarcodeText(barcodeText) {
+  if (!barcodeText || !barcodeText.startsWith("NC-DATA:")) return null;
   try {
-    const base64 = qrText.substring(8);
+    const base64 = barcodeText.substring(8);
     const jsonStr = decodeURIComponent(escape(atob(base64)));
     const data = JSON.parse(jsonStr);
     return {
@@ -1570,26 +1570,27 @@ function decodeBookingFromQRText(qrText) {
       redeemedTime: null
     };
   } catch (e) {
-    console.error("Failed to decode booking QR text:", e);
+    console.error("Failed to decode booking barcode text:", e);
     return null;
   }
 }
 
-// Generate QR Code canvas using QRious library (NEW)
-function renderTicketQR(booking) {
-  const canvas = document.getElementById('qr-canvas');
+// Generate CODE128 barcode canvas using JsBarcode.
+function renderTicketBarcode(booking) {
+  const canvas = document.getElementById('ticket-barcode-canvas');
   if (!canvas) return;
   try {
-    const qrValue = encodeBookingToQRText(booking);
-    new QRious({
-      element: canvas,
-      value: qrValue,
-      size: 200,
+    JsBarcode(canvas, encodeBookingToBarcodeText(booking), {
+      format: 'CODE128',
+      lineColor: '#1b4d3e',
       background: '#ffffff',
-      foreground: '#1b4d3e'
+      width: 1,
+      height: 96,
+      displayValue: false,
+      margin: 8
     });
   } catch (e) {
-    console.error("Failed to render QR Code via QRious:", e);
+    console.error("Failed to render ticket barcode:", e);
   }
 }
 
@@ -1608,15 +1609,19 @@ function initScannerView() {
 
 function startScannerCamera() {
   return new Promise((resolve) => {
-    const qrReader = document.getElementById('qr-reader');
-    if (!qrReader) {
+    const barcodeReader = document.getElementById('barcode-reader');
+    if (!barcodeReader) {
       resolve();
       return;
     }
 
     try {
-      html5QrCode = new Html5Qrcode("qr-reader");
-      const config = { fps: 15, qrbox: { width: 220, height: 220 } };
+      html5QrCode = new Html5Qrcode("barcode-reader");
+      const config = {
+        fps: 15,
+        qrbox: { width: 320, height: 140 },
+        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128]
+      };
 
       Html5Qrcode.getCameras().then(devices => {
         if (devices && devices.length > 0) {
@@ -1634,7 +1639,7 @@ function startScannerCamera() {
             cameraId,
             config,
             (decodedText, decodedResult) => {
-              console.log("QR Code Scanned successfully:", decodedText);
+              console.log("Barcode scanned successfully:", decodedText);
               document.getElementById('barcode-scan-input').value = decodedText;
               triggerScan(decodedText);
             },
@@ -1645,14 +1650,14 @@ function startScannerCamera() {
             resolve();
           }).catch(err => {
             console.warn("Html5Qrcode start failed with device ID:", err);
-            startScannerWithFacingMode(config, qrReader, resolve);
+            startScannerWithFacingMode(config, barcodeReader, resolve);
           });
         } else {
-          startScannerWithFacingMode(config, qrReader, resolve);
+          startScannerWithFacingMode(config, barcodeReader, resolve);
         }
       }).catch(err => {
         console.warn("Failed to get cameras:", err);
-        startScannerWithFacingMode(config, qrReader, resolve);
+        startScannerWithFacingMode(config, barcodeReader, resolve);
       });
     } catch (e) {
       console.error("HTML5-QRCode scanner startup crash:", e);
@@ -1661,12 +1666,12 @@ function startScannerCamera() {
   });
 }
 
-function startScannerWithFacingMode(config, qrReader, resolve) {
+function startScannerWithFacingMode(config, barcodeReader, resolve) {
   html5QrCode.start(
     { facingMode: "user" },
     config,
     (decodedText, decodedResult) => {
-      console.log("QR Code Scanned successfully:", decodedText);
+      console.log("Barcode scanned successfully:", decodedText);
       document.getElementById('barcode-scan-input').value = decodedText;
       triggerScan(decodedText);
     },
@@ -1675,10 +1680,10 @@ function startScannerWithFacingMode(config, qrReader, resolve) {
     resolve();
   }).catch(err => {
     console.warn("Camera scan permissions denied/unsupported:", err);
-    qrReader.innerHTML = `
+    barcodeReader.innerHTML = `
       <div style="padding: 2rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
         <i class="fas fa-camera-slash" style="font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--danger);"></i>
-        <p>Live QR webcam reader unavailable.</p>
+        <p>Live barcode webcam reader unavailable.</p>
         <p style="font-size: 0.75rem; margin-top: 0.25rem;">Use manual entry fallback input.</p>
       </div>
     `;
@@ -1719,7 +1724,7 @@ document.getElementById('scanner-form').addEventListener('submit', (e) => {
 
 function triggerScan(code) {
   const scannerPrompt = document.getElementById('scanner-prompt-text');
-  scannerPrompt.innerText = 'Verifying Ticket QR...';
+  scannerPrompt.innerText = 'Verifying ticket barcode...';
 
   // Stop scanner to avoid multiple scans
   stopScannerCamera();
@@ -1731,7 +1736,7 @@ function triggerScan(code) {
     
     // Auto-decode self-contained booking data if not found in local DB
     if (!booking && code.startsWith("NC-DATA:")) {
-      const decodedBooking = decodeBookingFromQRText(code);
+      const decodedBooking = decodeBookingFromBarcodeText(code);
       if (decodedBooking) {
         const exists = CanteenState.bookings.find(b => b.id.toLowerCase() === decodedBooking.id.toLowerCase());
         if (!exists) {
@@ -1764,15 +1769,15 @@ function triggerScan(code) {
       const isUpiLink = code.startsWith("upi://pay") || code.includes("upi://pay");
       if (isUpiLink) {
         document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'PAYMENT QR DETECTED';
-        document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'This is a payment gateway QR, not an order ticket. Please click "Simulate QR Payment Success" on the mobile device first to generate the Ticket QR code, then scan that ticket here.';
+        document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'This is a payment gateway QR, not an order ticket. Please simulate UPI payment success first to generate the ticket barcode, then scan that ticket here.';
       } else {
-        document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'INVALID QR';
+        document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'INVALID BARCODE';
         document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'Ticket ID not found in database.';
       }
       feedbackError.style.display = 'flex';
       setTimeout(() => {
         feedbackError.style.display = 'none';
-        scannerPrompt.innerText = 'Align QR code inside screen viewport';
+        scannerPrompt.innerText = 'Align barcode inside screen viewport';
         startScannerCamera();
       }, isUpiLink ? 6000 : 2000);
       return;
@@ -1786,7 +1791,7 @@ function triggerScan(code) {
       feedbackError.style.display = 'flex';
       setTimeout(() => {
         feedbackError.style.display = 'none';
-        scannerPrompt.innerText = 'Align QR code inside screen viewport';
+        scannerPrompt.innerText = 'Align barcode inside screen viewport';
         startScannerCamera();
       }, 3500);
       return;
@@ -1797,7 +1802,7 @@ function triggerScan(code) {
       feedbackWarning.style.display = 'flex';
       setTimeout(() => {
         feedbackWarning.style.display = 'none';
-        scannerPrompt.innerText = 'Align QR code inside screen viewport';
+        scannerPrompt.innerText = 'Align barcode inside screen viewport';
         startScannerCamera();
       }, 3000);
       return;
@@ -1810,7 +1815,7 @@ function triggerScan(code) {
     feedbackSuccess.style.display = 'flex';
     setTimeout(() => {
       feedbackSuccess.style.display = 'none';
-      scannerPrompt.innerText = 'Align QR code inside screen viewport';
+      scannerPrompt.innerText = 'Align barcode inside screen viewport';
       startScannerCamera();
     }, 3000);
   }, 1000);
