@@ -9,6 +9,8 @@ const CanteenState = {
   paymentTimer: null,
   lockedStock: [],
   currentLockId: null,
+  adminPassword: null,
+  scannerPin: null,
   
   // Bank Account details
   accountDetails: {
@@ -34,9 +36,6 @@ const CanteenState = {
       this.ingredients = JSON.parse(localStorage.getItem('nc_ingredients')) || [];
       this.transactions = JSON.parse(localStorage.getItem('nc_transactions')) || [];
       this.lockedStock = JSON.parse(localStorage.getItem('nc_locked_stock')) || [];
-      this.adminPassword = localStorage.getItem('nc_admin_password') || 'Admin@NCafeHills2026!';
-      this.scannerPin = localStorage.getItem('nc_scanner_pin') || '5678';
-      AppRouter.passcodeState.correctPINs.scanner = this.scannerPin;
       
       const savedAcc = JSON.parse(localStorage.getItem('nc_account_details'));
       if (savedAcc) {
@@ -55,8 +54,6 @@ const CanteenState = {
     localStorage.setItem('nc_transactions', JSON.stringify(this.transactions));
     localStorage.setItem('nc_account_details', JSON.stringify(this.accountDetails));
     localStorage.setItem('nc_locked_stock', JSON.stringify(this.lockedStock));
-    localStorage.setItem('nc_admin_password', this.adminPassword);
-    localStorage.setItem('nc_scanner_pin', this.scannerPin);
 
     // Auto-sync to Google Drive in the background if connected and active
     if (typeof GDriveSync !== 'undefined' && GDriveSync.accessToken && new Date() < GDriveSync.tokenExpiry && GDriveSync.fileId) {
@@ -75,8 +72,6 @@ const CanteenState = {
       transactions: this.transactions,
       accountDetails: this.accountDetails,
       lockedStock: this.lockedStock,
-      adminPassword: this.adminPassword,
-      scannerPin: this.scannerPin
     });
   },
 
@@ -89,11 +84,6 @@ const CanteenState = {
       if (data.transactions) this.transactions = data.transactions;
       if (data.accountDetails) this.accountDetails = data.accountDetails;
       if (data.lockedStock) this.lockedStock = data.lockedStock;
-      if (data.adminPassword) this.adminPassword = data.adminPassword;
-      if (data.scannerPin) {
-        this.scannerPin = data.scannerPin;
-        AppRouter.passcodeState.correctPINs.scanner = data.scannerPin;
-      }
       this.saveState();
       return true;
     } catch (e) {
@@ -154,15 +144,6 @@ const CanteenState = {
         this.lockedStock = data.lockedStock;
         changed = true;
       }
-      if (data.adminPassword) {
-        this.adminPassword = data.adminPassword;
-        changed = true;
-      }
-      if (data.scannerPin) {
-        this.scannerPin = data.scannerPin;
-        AppRouter.passcodeState.correctPINs.scanner = data.scannerPin;
-        changed = true;
-      }
 
       if (changed) {
         localStorage.setItem('nc_food_items', JSON.stringify(this.foodItems));
@@ -171,8 +152,6 @@ const CanteenState = {
         localStorage.setItem('nc_transactions', JSON.stringify(this.transactions));
         localStorage.setItem('nc_account_details', JSON.stringify(this.accountDetails));
         localStorage.setItem('nc_locked_stock', JSON.stringify(this.lockedStock));
-        localStorage.setItem('nc_admin_password', this.adminPassword);
-        localStorage.setItem('nc_scanner_pin', this.scannerPin);
         
         this.refreshActiveViews();
       }
@@ -432,7 +411,7 @@ const AppRouter = {
     pinDots: [],
     correctPINs: {
       admin: '1234',
-      scanner: '5678'
+      scanner: ''
     }
   },
 
@@ -2844,6 +2823,7 @@ const GDriveSync = {
         headers: { 'Authorization': `Bearer ${this.accessToken}` }
       });
       const data = await res.json();
+      payload.id = data.bookingId;
       
       if (data.files && data.files.length > 0) {
         this.fileId = data.files[0].id;

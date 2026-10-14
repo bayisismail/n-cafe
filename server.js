@@ -6,21 +6,84 @@ const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
-const JWT_SECRET = process.env.JWT_SECRET || 'ncafe- Hills-Kitchen-Services-Secret-Key-2026!';
-const DB_PATH = path.join(__dirname, 'n_cafe.db');
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET must be configured with at least 32 random characters.');
+}
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'n-cafe-data');
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'n_cafe.db');
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
+const rateBuckets = new Map();
+const paymentIntents = new Map();
 
-// Enable security headers, CORS, and JSON parsing
+app.disable('x-powered-by');
 app.use(helmet({
-  contentSecurityPolicy: false, // Disabled for simple visual template styling and libraries
+  contentSecurityPolicy: false
 }));
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(cors({
+  origin: allowedOrigin || false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
+app.use(express.json({ limit: '256kb' }));
+
+function rateLimit(windowMs, max, keyPrefix) {
+  return (req, res, next) => {
+    const key = `${keyPrefix}:${req.ip}`;
+    const now = Date.now();
+    const current = rateBuckets.get(key);
+    if (!current || now - current.startedAt >= windowMs) {
+      rateBuckets.set(key, { startedAt: now, count: 1 });
+      return next();
+    }
+    current.count += 1;
+    if (current.count > max) {
+      res.set('Retry-After', String(Math.ceil((windowMs - (now - current.startedAt)) / 1000)));
+      return res.status(429).json({ error: 'Too many requests. Try again later.' });
+    }
+    next();
+  };
+}
+
+app.use(rateLimit(60 * 1000, 120, 'global'));
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+app.use((req, res, next) => {
+  if (/\.(?:db|sqlite|sqlite3|env|log|sql|zip|bak)$/i.test(req.path) ||
+      req.path.startsWith('/.')) {
+    return res.status(404).end();
+  }
+  const publicFiles = new Set([
+    '/index.html',
+    '/admin.html',
+    '/scanner.html',
+    '/app.js',
+    '/customer.js',
+    '/admin.js',
+    '/scanner.js',
+    '/style.css'
+  ]);
+  if (!req.path.startsWith('/api/') && req.method === 'GET' &&
+      !publicFiles.has(req.path) &&
+      !/^\/assets\/[^/]+\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$/i.test(req.path)) {
+    if (!['/', '/admin', '/scanner'].includes(req.path)) return res.status(404).end();
+  }
+  next();
+});
 
 // Serve static web pages
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname), {
+  dotfiles: 'deny',
+  index: false
+}));
 
 // --- DATABASE INITIALIZATION & SCHEMA CREATION ---
 class DB {
@@ -36,7 +99,8 @@ class DB {
         this.pgClient = new Client({
           connectionString: dbUrl,
           ssl: {
-            rejectUnauthorized: false
+            rejectUnauthorized: true,
+            ca: process.env.DATABASE_CA
           }
         });
       } catch (err) {
@@ -314,10 +378,13 @@ function seedDatabase() {
   db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'admin_password'", (err, row) => {
     if (err) return console.error(err);
     if (parseInt(row.count, 10) === 0) {
-      console.log('Seeding default security credentials and settings...');
+      if (!process.env.ADMIN_PASSWORD || !process.env.OPERATOR_PIN) {
+        return console.error('ADMIN_PASSWORD and OPERATOR_PIN must be configured before first startup.');
+      }
+      console.log('Seeding configured security credentials and settings...');
       const salt = bcrypt.genSaltSync(10);
-      const adminHash = bcrypt.hashSync('Admin@NCafeHills2026!', salt);
-      const scannerHash = bcrypt.hashSync('5678', salt);
+      const adminHash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, salt);
+      const scannerHash = bcrypt.hashSync(process.env.OPERATOR_PIN, salt);
 
       db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_password', ?)", [adminHash]);
       db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('scanner_pin', ?)", [scannerHash]);
@@ -386,6 +453,35 @@ function seedDatabase() {
   });
 }
 
+function cleanText(value, maxLength) {
+      if (typeof value !== 'string') return null;
+      const text = value.replace(/[<>]/g, '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+      return text && text.length <= maxLength ? text : null;
+}
+
+function validPhone(value) {
+      return typeof value === 'string' && /^[0-9]{10,15}$/.test(value);
+}
+
+function normalizeBookingItems(items, catalog) {
+      if (!Array.isArray(items) || items.length < 1 || items.length > 30) return null;
+      const normalized = [];
+      for (const item of items) {
+        const id = cleanText(item && item.foodItemId, 32);
+        const quantity = Number(item && item.quantity);
+        if (!id || !Number.isInteger(quantity) || quantity < 1 || quantity > 50) return null;
+        const food = catalog.find(entry => entry.id === id);
+        if (!food) return null;
+        normalized.push({
+          foodItemId: food.id,
+          name: food.name,
+          quantity,
+          price: Number(food.offerPrice && food.offerPrice < food.price ? food.offerPrice : food.price)
+        });
+      }
+      return normalized;
+}
+
 // --- SECURE JWT AUTHENTICATION MIDDLEWARE ---
 function authenticateToken(allowedRoles = []) {
   return (req, res, next) => {
@@ -435,7 +531,7 @@ app.get('/scanner', (req, res) => {
 // --- API AUTH ENDPOINTS ---
 
 // Admin Login
-app.post('/api/auth/login-admin', (req, res) => {
+app.post('/api/auth/login-admin', rateLimit(15 * 60 * 1000, 10, 'admin-login'), (req, res) => {
   const { password } = req.body;
   if (!password) {
     return res.status(400).json({ error: 'Password required.' });
@@ -456,7 +552,7 @@ app.post('/api/auth/login-admin', (req, res) => {
 });
 
 // Operator Login
-app.post('/api/auth/login-operator', (req, res) => {
+app.post('/api/auth/login-operator', rateLimit(15 * 60 * 1000, 20, 'operator-login'), (req, res) => {
   const { pin } = req.body;
   if (!pin) {
     return res.status(400).json({ error: 'PIN required.' });
@@ -815,19 +911,26 @@ app.get('/api/bookings/status/:id', (req, res) => {
 // Retrieve Bookings by Customer Name and Pass Key (4-digit PIN)
 app.post('/api/bookings/retrieve', (req, res) => {
   const { customerName, passkey } = req.body;
-  if (!customerName || !passkey) {
+  const safeName = cleanText(customerName, 120);
+  if (!safeName || typeof passkey !== 'string' || !/^\d{4}$/.test(passkey)) {
     return res.status(400).json({ error: 'Name and Pass Key PIN required.' });
   }
 
   db.all(
-    "SELECT * FROM bookings WHERE LOWER(customerName) = ? AND passkey = ? AND status != 'redeemed' ORDER BY bookingTime DESC",
-    [customerName.toLowerCase().trim(), passkey],
-    (err, rows) => {
+    "SELECT * FROM bookings WHERE LOWER(customerName) = ? AND status != 'redeemed' ORDER BY bookingTime DESC",
+    [safeName.toLowerCase()],
+    async (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
-      const processed = rows.map(r => ({
+      const matches = [];
+      for (const row of rows) {
+        if (await bcrypt.compare(passkey, row.passkey)) matches.push(row);
+      }
+      const processed = matches.map(r => ({
         ...r,
-        items: JSON.parse(r.items)
+        items: JSON.parse(r.items),
+        passkey: undefined
       }));
+      if (processed.length === 0) return res.status(404).json({ error: 'No matching active tickets found.' });
       res.json(processed);
     }
   );
@@ -867,14 +970,28 @@ app.post('/api/settings/razorpay', authenticateToken(['admin']), (req, res) => {
 
 // Create Razorpay Order
 app.post('/api/payments/create-order', (req, res) => {
-  const { amount } = req.body;
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ error: 'Invalid checkout amount.' });
+  const { amount, bookingData } = req.body;
+  if (!amount || amount <= 0 || !bookingData || typeof bookingData !== 'object') {
+    return res.status(400).json({ error: 'Invalid checkout amount or booking data.' });
   }
 
   // Fetch Razorpay credentials from db or environment
-  db.get("SELECT value FROM settings WHERE key = 'razorpay_key_id'", (err, rId) => {
-    db.get("SELECT value FROM settings WHERE key = 'razorpay_key_secret'", (err, rSecret) => {
+  db.all("SELECT * FROM food_items", (catalogErr, catalog) => {
+    if (catalogErr) return res.status(500).json({ error: 'Unable to validate menu items.' });
+    const safeName = cleanText(bookingData.customerName, 120);
+    const safePhone = cleanText(bookingData.customerPhone, 15);
+    const normalizedItems = normalizeBookingItems(bookingData.items, catalog);
+    const serverTotal = normalizedItems &&
+      normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    if (!bookingData.id || !/^[A-Za-z0-9-]{10,40}$/.test(bookingData.id) ||
+        !safeName || !validPhone(safePhone) || typeof bookingData.passkey !== 'string' ||
+        !/^\d{4}$/.test(bookingData.passkey) || !normalizedItems ||
+        !Number.isFinite(serverTotal) || Math.abs(serverTotal - Number(amount)) > 0.01) {
+      return res.status(400).json({ error: 'Invalid or stale checkout data.' });
+    }
+
+    db.get("SELECT value FROM settings WHERE key = 'razorpay_key_id'", (err, rId) => {
+      db.get("SELECT value FROM settings WHERE key = 'razorpay_key_secret'", (err, rSecret) => {
       const keyId = (rId ? rId.value : process.env.RAZORPAY_KEY_ID) || '';
       const keySecret = (rSecret ? rSecret.value : process.env.RAZORPAY_KEY_SECRET) || '';
 
@@ -900,23 +1017,35 @@ app.post('/api/payments/create-order', (req, res) => {
             console.error("Razorpay order creation error:", err);
             return res.status(500).json({ error: err.message || 'Razorpay order creation failed.' });
           }
+          paymentIntents.set(order.id, {
+            id: bookingData.id,
+            customerName: safeName,
+            customerPhone: safePhone,
+            passkey: bookingData.passkey,
+            items: normalizedItems,
+            totalAmount: serverTotal,
+            lockId: bookingData.lockId
+          });
           res.json(order);
         });
       } catch (e) {
         console.error("Razorpay SDK initialize failed:", e);
         res.status(500).json({ error: 'Failed to initialize payment gateway.' });
       }
+      });
     });
   });
 });
 
 // Verify signature and finalize order
 app.post('/api/payments/verify-signature', (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, bookingData } = req.body;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
   
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !bookingData) {
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
     return res.status(400).json({ error: 'Missing payment signature verification parameters.' });
   }
+  const bookingData = paymentIntents.get(razorpay_order_id);
+  if (!bookingData) return res.status(400).json({ error: 'Payment intent is missing or already used.' });
 
   db.get("SELECT value FROM settings WHERE key = 'razorpay_key_secret'", (err, rSecret) => {
     const keySecret = (rSecret ? rSecret.value : process.env.RAZORPAY_KEY_SECRET) || '';
@@ -936,6 +1065,8 @@ app.post('/api/payments/verify-signature', (req, res) => {
       if (expectedSignature !== razorpay_signature) {
         return res.status(400).json({ error: 'Cryptographic signature verification failed.' });
       }
+
+      paymentIntents.delete(razorpay_order_id);
 
       // Check stock & finalize booking
       const { id, customerName, customerPhone, passkey, items, totalAmount, lockId } = bookingData;
@@ -983,7 +1114,7 @@ app.post('/api/payments/verify-signature', (req, res) => {
 
             db.run(
               "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, 'Razorpay (Online)', 'Paid', bookingTime, expiryTime, 'pending']
+              [id, customerName, customerPhone, bcrypt.hashSync(passkey, 12), JSON.stringify(items), totalAmount, 'Razorpay (Online)', 'Paid', bookingTime, expiryTime, 'pending']
             );
 
             const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
@@ -1014,10 +1145,13 @@ app.post('/api/payments/verify-signature', (req, res) => {
 });
 
 // Place Booking (Checkout Checkout Order)
-app.post('/api/bookings', (req, res) => {
+app.post('/api/bookings', rateLimit(60 * 1000, 20, 'booking-create'), (req, res) => {
   const { id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, lockId } = req.body;
 
-  if (!id || !customerName || !customerPhone || !passkey || !items || !totalAmount) {
+  const safeName = cleanText(customerName, 120);
+  const safePhone = cleanText(customerPhone, 15);
+  if (!id || !/^[A-Za-z0-9-]{10,40}$/.test(id) || !safeName ||
+      !validPhone(safePhone) || typeof passkey !== 'string' || !/^\d{4}$/.test(passkey)) {
     return res.status(400).json({ error: 'Invalid booking data.' });
   }
 
@@ -1025,9 +1159,10 @@ app.post('/api/bookings', (req, res) => {
   db.all("SELECT * FROM food_items", (err, catalog) => {
     if (err) return res.status(500).json({ error: err.message });
 
+    const normalizedItems = normalizeBookingItems(items, catalog);
+    if (!normalizedItems) return res.status(400).json({ error: 'Invalid order items.' });
     let stockIssues = [];
-    items.forEach(cItem => {
-      if (cItem.foodItemId === 'FD-SPECIAL') return;
+    normalizedItems.forEach(cItem => {
       const food = catalog.find(f => f.id === cItem.foodItemId);
       if (!food || food.stock < cItem.quantity) {
         stockIssues.push(`${cItem.name} (Only ${food ? food.stock : 0} available)`);
@@ -1049,6 +1184,11 @@ app.post('/api/bookings', (req, res) => {
         } catch (e) {}
       }
 
+      const serverTotal = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      if (!Number.isFinite(serverTotal) || Math.abs(serverTotal - Number(totalAmount)) > 0.01) {
+        return res.status(400).json({ error: 'Order total does not match the current menu.' });
+      }
+      const hashedPasskey = bcrypt.hashSync(passkey, 12);
       // 2. Perform booking insertion and stock reduction
       const bookingTime = new Date().toISOString();
       const expiryTime = new Date(Date.now() + ticketHours * 3600 * 1000).toISOString();
@@ -1059,26 +1199,24 @@ app.post('/api/bookings', (req, res) => {
 
         // Reduce item stock levels
         const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
-        items.forEach(item => {
-          if (item.foodItemId !== 'FD-SPECIAL') {
-            updateStmt.run([item.quantity, item.foodItemId]);
-          }
+        normalizedItems.forEach(item => {
+          updateStmt.run([item.quantity, item.foodItemId]);
         });
         updateStmt.finalize();
 
         // Insert booking record
         db.run(
           "INSERT INTO bookings (id, customerName, customerPhone, passkey, items, totalAmount, paymentMethod, paymentStatus, bookingTime, expiryTime, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [id, customerName, customerPhone, passkey, JSON.stringify(items), totalAmount, paymentMethod, 'Paid', bookingTime, expiryTime, 'pending']
+          [id, safeName, safePhone, hashedPasskey, JSON.stringify(normalizedItems), serverTotal, 'UPI', 'Paid', bookingTime, expiryTime, 'pending']
         );
 
         // Create cashier ledger transaction logs
         const txId = 'TX-' + Math.floor(20000 + Math.random() * 80000).toString();
-        const txTitle = `Order Placed - ${customerName}`;
-        const txDetails = items.map(i => `${i.name} x${i.quantity}`).join(', ');
+        const txTitle = `Order Placed - ${safeName}`;
+        const txDetails = normalizedItems.map(i => `${i.name} x${i.quantity}`).join(', ');
         db.run(
           "INSERT INTO transactions (id, type, title, amount, timestamp, details) VALUES (?, ?, ?, ?, ?, ?)",
-          [txId, 'sale', txTitle, totalAmount, bookingTime, txDetails]
+          [txId, 'sale', txTitle, serverTotal, bookingTime, txDetails]
         );
 
         // Release the temporary lock
