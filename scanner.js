@@ -295,6 +295,7 @@ const ScannerState = {
 
       if (res.status === 200 || res.status === 201) {
         const data = await res.json();
+        this.openReceiptPopup(data.booking);
         this.printBill(data.booking);
         
         feedbackSuccess.style.display = 'flex';

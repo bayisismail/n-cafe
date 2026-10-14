@@ -1810,6 +1810,7 @@ function triggerScan(code) {
 
     // Automatic Redemption and Print Receipt trigger
     redeemBookingOrder(booking);
+    openReceiptPopup(booking);
     printBill(booking);
 
     feedbackSuccess.style.display = 'flex';
