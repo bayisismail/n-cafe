@@ -12,8 +12,17 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET || JWT_SECRET.length < 32) {
-  throw new Error('JWT_SECRET must be configured with at least 32 random characters.');
+const missingEnvironment = ['JWT_SECRET', 'ADMIN_PASSWORD', 'OPERATOR_PIN']
+  .filter((name) => !process.env[name]);
+if (missingEnvironment.length > 0) {
+  throw new Error(
+    `Missing required environment variable(s): ${missingEnvironment.join(', ')}. ` +
+    'Add them in Render Dashboard > Environment > Environment Variables. ' +
+    'JWT_SECRET must contain at least 32 random characters.'
+  );
+}
+if (JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET must contain at least 32 random characters.');
 }
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'n-cafe-data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
