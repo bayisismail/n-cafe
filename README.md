@@ -1,6 +1,6 @@
 # ☕ N Cafe - Modern Canteen Management System
 
-A beautiful, premium, client-side web application for managing canteen orders, POS transactions, real-time ticket validation with barcodes, inventory tracking, and UPI payment simulation.
+A beautiful, premium, client-side web application for managing canteen orders, POS transactions, real-time ticket validation with barcodes, inventory tracking, and UPI payments.
 
 ---
 
