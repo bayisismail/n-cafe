@@ -66,6 +66,12 @@ To host N Cafe online for real customer ordering and payment gateways, you can d
    - `JWT_SECRET`: At least 32 random characters used to sign secure tokens.
    - `ADMIN_PASSWORD`: A strong administrator password.
    - `OPERATOR_PIN`: A 4-digit operator PIN.
+   - `ALLOWED_ORIGIN`: Your deployed HTTPS URL, for example `https://n-cafe.onrender.com`.
+
+   Do not leave these variables unset. Render does not load `.env.example`; either add
+   them manually in the service's **Environment** tab, or create the service from the
+   included `render.yaml` Blueprint. Generate `JWT_SECRET` with a password manager or
+   Render's generated-value option, and never commit the values to Git.
 6. Click **Deploy Web Service**. Render will build and start your application.
 
 *When `DATABASE_URL` is set, the server automatically switches from SQLite to PostgreSQL, migrates schemas, and seeds default foods (dosa, coffee, rava dosa, meals thali) on startup.*
