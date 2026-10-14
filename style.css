@@ -1580,6 +1580,20 @@ main {
 }
 
 @media print {
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 58mm !important;
+    min-width: 58mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
   body.printing-receipt > * {
     visibility: hidden !important;
   }
@@ -1593,9 +1607,9 @@ main {
     display: flex !important;
     position: absolute !important;
     inset: 0 !important;
-    width: 100% !important;
+    width: 58mm !important;
     height: auto !important;
-    min-height: 100vh !important;
+    min-height: 0 !important;
     padding: 0 !important;
     background: #fff !important;
     color: #111 !important;
@@ -1603,13 +1617,38 @@ main {
 
   body.printing-receipt .receipt-popup-card {
     max-width: none !important;
-    width: 100% !important;
+    width: 58mm !important;
     border-radius: 0 !important;
     box-shadow: none !important;
   }
 
   body.printing-receipt .receipt-popup-footer {
     display: none !important;
+  }
+
+  body.printing-receipt .receipt-popup-header {
+    padding: 4mm 3mm !important;
+  }
+
+  body.printing-receipt .receipt-popup-header h3 {
+    font-size: 15px !important;
+  }
+
+  body.printing-receipt .receipt-popup-header p {
+    font-size: 10px !important;
+  }
+
+  body.printing-receipt .receipt-popup-body {
+    padding: 3mm !important;
+  }
+
+  body.printing-receipt .print-exclude {
+    display: none !important;
+  }
+
+  body.printing-receipt .receipt-popup-row,
+  body.printing-receipt .receipt-popup-item {
+    font-size: 11px !important;
   }
 }
 
