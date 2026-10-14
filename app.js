@@ -1377,7 +1377,7 @@ function finalizeCanteenOrder(paymentMethodText) {
 
   const tax = 0;
   const total = subtotal;
-  const bookingId = generate100CharToken();
+  const bookingId = generateTicketToken();
 
   const newBooking = {
     id: bookingId,
@@ -1509,11 +1509,11 @@ function renderTicketPage() {
   CanteenState.ticketTimerInterval = setInterval(tick, 1000);
 }
 
-// Generate random 100-character alphanumeric token
-function generate100CharToken() {
+// Generate a compact 20-character alphanumeric ticket ID.
+function generateTicketToken() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let token = 'NC-';
-  for (let i = 0; i < 97; i++) {
+  for (let i = 0; i < 17; i++) {
     token += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return token;
@@ -1580,7 +1580,7 @@ function renderTicketBarcode(booking) {
   const canvas = document.getElementById('ticket-barcode-canvas');
   if (!canvas) return;
   try {
-    JsBarcode(canvas, encodeBookingToBarcodeText(booking), {
+    JsBarcode(canvas, booking.id, {
       format: 'CODE128',
       lineColor: '#1b4d3e',
       background: '#ffffff',
@@ -2384,7 +2384,7 @@ document.getElementById('pos-billing-form').addEventListener('submit', (e) => {
 
   const tax = 0;
   const total = subtotal;
-  const bookingId = generate100CharToken();
+  const bookingId = generateTicketToken();
 
   const newBooking = {
     id: bookingId,
