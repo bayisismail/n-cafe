@@ -1724,9 +1724,9 @@ const AdminState = {
               <div style="font-size:1rem; font-weight:700; color:var(--accent); margin-top:0.5rem;">Total Amount: ₹${b.totalAmount}</div>
             </div>
             <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem; text-align:center;">
-              <strong>Ticket Verification QR</strong>
+              <strong>Ticket Verification Barcode</strong>
               <div style="background:white; padding:0.75rem; border-radius:12px; display:inline-block; margin-top:0.5rem;">
-                <canvas id="history-qr-canvas" width="160" height="160"></canvas>
+                <canvas id="history-barcode-canvas" width="360" height="100"></canvas>
               </div>
             </div>
             <div style="border-top: 1px dashed var(--border-dark); padding-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
@@ -1810,9 +1810,9 @@ const AdminState = {
     if (item.category === 'sales') {
       const b = this.bookings.find(booking => booking.bookingTime === item.timestamp);
       if (b) {
-        const canvas = document.getElementById('history-qr-canvas');
+        const canvas = document.getElementById('history-barcode-canvas');
         if (canvas) {
-          const qrData = {
+          const barcodeData = {
             id: b.id,
             name: b.customerName,
             phone: b.customerPhone,
@@ -1829,13 +1829,15 @@ const AdminState = {
             eTime: b.expiryTime,
             status: b.status
           };
-          const qrValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(qrData))));
-          new QRious({
-            element: canvas,
-            value: qrValue,
-            size: 160,
+          const barcodeValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(barcodeData))));
+          JsBarcode(canvas, barcodeValue, {
+            format: 'CODE128',
+            lineColor: '#1b4d3e',
             background: '#ffffff',
-            foreground: '#1b4d3e'
+            width: 1,
+            height: 76,
+            displayValue: false,
+            margin: 8
           });
         }
 
@@ -1888,7 +1890,7 @@ const AdminState = {
             panel.innerHTML = `
               <div style="text-align: center; color: var(--text-muted); padding: 2rem 0;">
                 <i class="fas fa-info-circle" style="font-size: 2rem; margin-bottom: 0.75rem; display: block; color: var(--text-muted);"></i>
-                Select any event row on the left to view detailed audit logs, print receipts, view QR codes, or modify logs.
+                Select any event row on the left to view detailed audit logs, print receipts, view ticket barcodes, or modify logs.
               </div>
             `;
             await this.fetchTransactions();

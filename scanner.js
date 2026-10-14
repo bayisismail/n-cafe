@@ -155,12 +155,16 @@ const ScannerState = {
   },
 
   startScannerCamera() {
-    const qrReader = document.getElementById('qr-reader');
-    if (!qrReader) return;
+    const barcodeReader = document.getElementById('barcode-reader');
+    if (!barcodeReader) return;
 
     try {
-      this.html5QrCode = new Html5Qrcode("qr-reader");
-      const config = { fps: 15, qrbox: { width: 220, height: 220 } };
+      this.html5QrCode = new Html5Qrcode("barcode-reader");
+      const config = {
+        fps: 15,
+        qrbox: { width: 320, height: 140 },
+        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128]
+      };
 
       Html5Qrcode.getCameras().then(devices => {
         if (devices && devices.length > 0) {
@@ -185,21 +189,21 @@ const ScannerState = {
             () => {} // safe frame warnings ignore
           ).catch(err => {
             console.warn("Camera start failed with ID, falling back to facingMode:", err);
-            this.startScannerWithFacingMode(config, qrReader);
+            this.startScannerWithFacingMode(config, barcodeReader);
           });
         } else {
-          this.startScannerWithFacingMode(config, qrReader);
+          this.startScannerWithFacingMode(config, barcodeReader);
         }
       }).catch(err => {
         console.warn("Failed to get devices, falling back to facingMode:", err);
-        this.startScannerWithFacingMode(config, qrReader);
+        this.startScannerWithFacingMode(config, barcodeReader);
       });
     } catch (e) {
       console.error("Scanner startup failed:", e);
     }
   },
 
-  startScannerWithFacingMode(config, qrReader) {
+  startScannerWithFacingMode(config, barcodeReader) {
     if (!this.html5QrCode) return;
     
     this.html5QrCode.start(
@@ -213,10 +217,10 @@ const ScannerState = {
       () => {}
     ).catch(err => {
       console.warn("Camera start failed in fallback mode:", err);
-      qrReader.innerHTML = `
+      barcodeReader.innerHTML = `
         <div style="padding: 2rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
           <i class="fas fa-camera-slash" style="font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--danger);"></i>
-          <p>Live QR webcam reader unavailable.</p>
+          <p>Live barcode webcam reader unavailable.</p>
           <p style="font-size: 0.75rem; margin-top: 0.25rem;">Use manual entry fallback input.</p>
         </div>
       `;
@@ -237,7 +241,7 @@ const ScannerState = {
 
   async triggerScan(code) {
     const scannerPrompt = document.getElementById('scanner-prompt-text');
-    scannerPrompt.innerText = 'Verifying Ticket QR...';
+    scannerPrompt.innerText = 'Verifying ticket barcode...';
     
     // Stop camera immediately to prevent duplicate scans
     await this.stopScannerCamera();
@@ -253,7 +257,7 @@ const ScannerState = {
     // Auto-decode offline ticket format if it's NC-DATA:...
     let bookingPayload = { id: code.trim() };
     if (code.startsWith("NC-DATA:")) {
-      const decoded = decodeBookingFromQRText(code);
+      const decoded = decodeBookingFromBarcodeText(code);
       if (decoded) {
         // If it's a valid offline format, check if we need to sync it to the server first
         try {
@@ -324,9 +328,9 @@ const ScannerState = {
         const isUpiLink = code.startsWith("upi://pay") || code.includes("upi://pay");
         if (isUpiLink) {
           document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'PAYMENT QR DETECTED';
-          document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'Simulate QR Payment Success on mobile device to generate Ticket QR first.';
+          document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'Simulate UPI Payment Success on mobile device to generate a ticket barcode first.';
         } else {
-          document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'INVALID QR';
+          document.querySelector('#scan-feedback-error .scan-feedback-title').innerText = 'INVALID BARCODE';
           document.querySelector('#scan-feedback-error .scan-feedback-desc').innerText = 'Ticket ID not found in database.';
         }
         feedbackError.style.display = 'flex';
@@ -403,11 +407,11 @@ const ScannerState = {
   }
 };
 
-// Decode booking object from QR code text
-function decodeBookingFromQRText(qrText) {
-  if (!qrText || !qrText.startsWith("NC-DATA:")) return null;
+// Decode booking object from barcode text.
+function decodeBookingFromBarcodeText(barcodeText) {
+  if (!barcodeText || !barcodeText.startsWith("NC-DATA:")) return null;
   try {
-    const base64 = qrText.substring(8);
+    const base64 = barcodeText.substring(8);
     const jsonStr = decodeURIComponent(escape(atob(base64)));
     const data = JSON.parse(jsonStr);
     return {
@@ -430,7 +434,7 @@ function decodeBookingFromQRText(qrText) {
       redeemedTime: null
     };
   } catch (e) {
-    console.error("Failed to decode booking QR text:", e);
+    console.error("Failed to decode booking barcode text:", e);
     return null;
   }
 }

@@ -830,8 +830,8 @@ function renderTicketPage() {
   document.getElementById('ticket-tax').innerText = `₹${tax}`;
   document.getElementById('ticket-total').innerText = `₹${b.totalAmount}`;
 
-  // Render QR Canvas containing self-contained booking JSON Base64 string
-  renderTicketQR(b);
+  // Render a CODE128 barcode containing the self-contained booking payload.
+  renderTicketBarcode(b);
   document.getElementById('barcode-num-text').innerText = b.id;
 
   const downloadBtn = document.getElementById('btn-download-ticket');
@@ -898,11 +898,11 @@ function renderTicketPage() {
   CanteenState.ticketTimerInterval = setInterval(tick, 1000); // Check status every 1 second
 }
 
-function renderTicketQR(booking) {
-  const canvas = document.getElementById('qr-canvas');
+function renderTicketBarcode(booking) {
+  const canvas = document.getElementById('ticket-barcode-canvas');
   if (!canvas) return;
   
-  // Create short format payload to fit nicely in QR
+  // Keep the payload self-contained so the scanner can recover tickets offline.
   const data = {
     id: booking.id,
     cName: booking.customerName,
@@ -921,18 +921,20 @@ function renderTicketQR(booking) {
     status: booking.status
   };
 
-  const qrValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  const barcodeValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
 
   try {
-    new QRious({
-      element: canvas,
-      value: qrValue,
-      size: 200,
+    JsBarcode(canvas, barcodeValue, {
+      format: 'CODE128',
+      lineColor: '#1b4d3e',
       background: '#ffffff',
-      foreground: '#1b4d3e'
+      width: 1,
+      height: 96,
+      displayValue: false,
+      margin: 8
     });
   } catch (e) {
-    console.error("Failed to render QR Code via QRious:", e);
+    console.error("Failed to render ticket barcode:", e);
   }
 }
 

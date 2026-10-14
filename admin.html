@@ -10,8 +10,9 @@
   
   <!-- Style Sheet -->
   <link rel="stylesheet" href="style.css">
-  <!-- QR Code Generator Library -->
+  <!-- UPI QR and barcode generator libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 </head>
 <body style="background: var(--bg-dark); color: var(--text-main);">
 
@@ -122,7 +123,7 @@
         </div>
         <div class="admin-card" style="padding: 1rem 1.25rem; background: rgba(5, 150, 105, 0.04); border: 1px solid rgba(5, 150, 105, 0.12);">
           <div class="admin-card-header" style="font-size: 0.75rem;">
-            <span>Total Scanned QR (Issued)</span>
+            <span>Total Scanned Barcodes (Issued)</span>
             <i class="fas fa-qrcode" style="color: #059669;"></i>
           </div>
           <div class="admin-card-val" id="tab1-scanned-count" style="font-size: 1.6rem; color: #fff;">0</div>
@@ -731,7 +732,7 @@
           <div id="history-audit-panel" style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-dark); border-radius: 12px; padding: 1.25rem; font-size: 0.85rem; line-height: 1.5; color: var(--text-main);">
             <div style="text-align: center; color: var(--text-muted); padding: 2rem 0;">
               <i class="fas fa-info-circle" style="font-size: 2rem; margin-bottom: 0.75rem; display: block; color: var(--text-muted);"></i>
-              Select any event row on the left to view detailed audit logs, print receipts, view QR codes, or modify logs.
+              Select any event row on the left to view detailed audit logs, print receipts, view ticket barcodes, or modify logs.
             </div>
           </div>
         </div>
