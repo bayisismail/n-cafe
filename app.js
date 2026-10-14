@@ -944,7 +944,7 @@ function updateCartQty(itemId, change) {
     removeFromCart(itemId);
   } else {
     const availableStock = CanteenState.getAvailableStock(itemId);
-    if (newQty > availableStock) {
+    if (change > 0 && newQty > availableStock) {
       alert(`Only ${availableStock} items of ${foodItem.name} are available.`);
     } else {
       cartItem.quantity = newQty;

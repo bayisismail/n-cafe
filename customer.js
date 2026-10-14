@@ -277,7 +277,7 @@ function adjustCartQty(foodId, amount) {
   const targetQty = cartItem.quantity + amount;
   if (targetQty <= 0) {
     CanteenState.cart = CanteenState.cart.filter(c => c.id !== foodId);
-  } else if (targetQty <= food.availableStock) {
+  } else if (amount < 0 || targetQty <= food.availableStock) {
     cartItem.quantity = targetQty;
   } else {
     alert(`Limit exceeded. Only ${food.availableStock} portions available in stock.`);
