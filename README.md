@@ -50,6 +50,9 @@ This application is built using a **serverless client-side architecture**:
 Credentials are never stored in this repository. Configure `JWT_SECRET`, `ADMIN_PASSWORD`,
 and `OPERATOR_PIN` as deployment environment variables before the first server start.
 
+For local development, copy `.env.example` to `.env`, replace every placeholder with
+your own values, and then run `npm start`. The `.env` file is ignored by Git.
+
 ---
 
 ## 🛠️ Key Application Features

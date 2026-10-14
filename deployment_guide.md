@@ -63,7 +63,9 @@ To host N Cafe online for real customer ordering and payment gateways, you can d
    - **Start Command**: `node server.js`
 5. Click **Advanced** and add the following **Environment Variables**:
    - `DATABASE_URL`: Paste your PostgreSQL connection string (e.g., `postgresql://...`).
-   - `JWT_SECRET`: A secret key string to sign secure tokens (e.g., `my_secure_random_key_123`).
+   - `JWT_SECRET`: At least 32 random characters used to sign secure tokens.
+   - `ADMIN_PASSWORD`: A strong administrator password.
+   - `OPERATOR_PIN`: A 4-digit operator PIN.
 6. Click **Deploy Web Service**. Render will build and start your application.
 
 *When `DATABASE_URL` is set, the server automatically switches from SQLite to PostgreSQL, migrates schemas, and seeds default foods (dosa, coffee, rava dosa, meals thali) on startup.*
