@@ -854,29 +854,82 @@ app.delete('/api/ingredients/:id', authenticateToken(['admin']), (req, res) => {
 // Create Stock Hold Lock
 app.post('/api/locks', (req, res) => {
   const { cartItems } = req.body; // Array of { id, quantity }
-  if (!cartItems || cartItems.length === 0) {
+  if (!Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: 'Cart is empty.' });
+  }
+
+  const requested = new Map();
+  for (const item of cartItems) {
+    if (!item || item.id === 'FD-SPECIAL') continue;
+    const quantity = Number(item.quantity);
+    if (!/^[A-Za-z0-9-]{1,40}$/.test(String(item.id)) ||
+        !Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      return res.status(400).json({ error: 'Invalid cart item or quantity.' });
+    }
+    requested.set(item.id, (requested.get(item.id) || 0) + quantity);
   }
 
   const lockId = 'LK-' + Math.floor(100000 + Math.random() * 900000).toString();
   const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
 
   db.serialize(() => {
-    let hasError = false;
-    const stmt = db.prepare("INSERT INTO locks (id, foodItemId, quantity, expiryTime) VALUES (?, ?, ?, ?)");
-    cartItems.forEach(item => {
-      stmt.run([lockId, item.id, item.quantity, expiry], (err) => {
-        if (err) {
-          console.error("Error inserting stock lock:", err);
-          hasError = true;
+    db.run("BEGIN IMMEDIATE TRANSACTION", (beginErr) => {
+      if (beginErr) return res.status(500).json({ error: 'Unable to reserve stock.' });
+
+      db.run("DELETE FROM locks WHERE expiryTime <= ?", [Date.now()], (cleanupErr) => {
+        if (cleanupErr) {
+          return db.run("ROLLBACK", () => res.status(500).json({ error: 'Unable to reserve stock.' }));
         }
+
+        db.all(
+          `SELECT f.id, f.stock, COALESCE(SUM(l.quantity), 0) AS lockedQty
+           FROM food_items f
+           LEFT JOIN locks l ON l.foodItemId = f.id AND l.expiryTime > ?
+           GROUP BY f.id`,
+          [Date.now()],
+          (stockErr, rows) => {
+            if (stockErr) {
+              return db.run("ROLLBACK", () => res.status(500).json({ error: 'Unable to reserve stock.' }));
+            }
+
+            const conflicts = [];
+            requested.forEach((quantity, itemId) => {
+              const row = rows.find(item => item.id === itemId);
+              const available = row ? Number(row.stock) - Number(row.lockedQty) : 0;
+              if (!row || quantity > available) {
+                conflicts.push(`${itemId} (Only ${Math.max(0, available)} available)`);
+              }
+            });
+            if (conflicts.length > 0) {
+              return db.run(
+                "ROLLBACK",
+                () => res.status(409).json({ error: 'Some items are no longer available.', details: conflicts })
+              );
+            }
+
+            const stmt = db.prepare(
+              "INSERT INTO locks (id, foodItemId, quantity, expiryTime) VALUES (?, ?, ?, ?)"
+            );
+            let insertError = null;
+            requested.forEach((quantity, itemId) => {
+              stmt.run([lockId, itemId, quantity, expiry], (err) => {
+                if (err) insertError = err;
+              });
+            });
+            stmt.finalize((finalizeErr) => {
+              if (insertError || finalizeErr) {
+                return db.run("ROLLBACK", () => res.status(500).json({ error: 'Unable to reserve stock.' }));
+              }
+              db.run("COMMIT", (commitErr) => {
+                if (commitErr) {
+                  return db.run("ROLLBACK", () => res.status(500).json({ error: 'Unable to reserve stock.' }));
+                }
+                res.json({ lockId });
+              });
+            });
+          }
+        );
       });
-    });
-    stmt.finalize((err) => {
-      if (err || hasError) {
-        return res.status(500).json({ error: 'Failed to create stock hold locks.' });
-      }
-      res.json({ lockId });
     });
   });
 });
