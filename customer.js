@@ -499,7 +499,7 @@ document.getElementById('checkout-form').addEventListener('submit', async (e) =>
               });
 
               const bookingData = {
-                id: generate100CharToken(),
+                id: generateTicketToken(),
                 customerName: name,
                 customerPhone: phone,
                 passkey: passkey,
@@ -742,8 +742,8 @@ async function finalizeCanteenOrder(paymentMethodText) {
     }
   });
 
-  // Generate 100-character alphanumeric ticket ID
-  const bookingId = generate100CharToken();
+  // Generate a compact 20-character alphanumeric ticket ID.
+  const bookingId = generateTicketToken();
 
   const payload = {
     id: bookingId,
@@ -789,10 +789,10 @@ async function finalizeCanteenOrder(paymentMethodText) {
   }
 }
 
-function generate100CharToken() {
+function generateTicketToken() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let token = 'NC-';
-  for (let i = 0; i < 97; i++) {
+  for (let i = 0; i < 17; i++) {
     token += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return token;
@@ -921,7 +921,7 @@ function renderTicketBarcode(booking) {
     status: booking.status
   };
 
-  const barcodeValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  const barcodeValue = booking.id;
 
   try {
     JsBarcode(canvas, barcodeValue, {

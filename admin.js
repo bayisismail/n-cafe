@@ -1812,25 +1812,7 @@ const AdminState = {
       if (b) {
         const canvas = document.getElementById('history-barcode-canvas');
         if (canvas) {
-          const barcodeData = {
-            id: b.id,
-            name: b.customerName,
-            phone: b.customerPhone,
-            pk: b.passkey,
-            items: b.items.map(i => ({
-              fid: i.foodItemId,
-              name: i.name,
-              qty: i.quantity,
-              price: i.price
-            })),
-            total: b.totalAmount,
-            pMethod: b.paymentMethod,
-            bTime: b.bookingTime,
-            eTime: b.expiryTime,
-            status: b.status
-          };
-          const barcodeValue = "NC-DATA:" + btoa(unescape(encodeURIComponent(JSON.stringify(barcodeData))));
-          JsBarcode(canvas, barcodeValue, {
+          JsBarcode(canvas, b.id, {
             format: 'CODE128',
             lineColor: '#1b4d3e',
             background: '#ffffff',

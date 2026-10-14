@@ -57,5 +57,5 @@ This application is built using a **serverless client-side architecture**:
 1. **Staff Portal Gate**: Located in the footer, allowing access to the Operator Scanner and Admin Panel via passwords.
 2. **UPI-Only Payment Sandbox**: Custom payment flow generating standard `upi://pay` deep links.
 3. **Mobile Intent Payment**: Clicking the payment button on mobile devices automatically redirects to UPI apps (GPay, PhonePe, Paytm).
-4. **Live Barcode Scanner**: Captures customer ticket CODE128 barcodes via device camera, validating status and auto-compiling receipts. UPI payment screens continue to use standard QR codes for app compatibility.
+4. **Live Barcode Scanner**: Captures customer ticket CODE128 barcodes containing a compact 20-character ticket ID, validating status and auto-compiling receipts. UPI payment screens continue to use standard QR codes for app compatibility.
 5. **Excel/CSV Export**: Custom column selector modal allows you to choose columns before exporting ledger transactions and raw material inventory logs.
