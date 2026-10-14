@@ -1810,7 +1810,6 @@ function triggerScan(code) {
 
     // Automatic Redemption and Print Receipt trigger
     redeemBookingOrder(booking);
-    openReceiptPopup(booking);
     printBill(booking);
 
     feedbackSuccess.style.display = 'flex';
@@ -1876,10 +1875,15 @@ document.getElementById('btn-receipt-cancel').addEventListener('click', closeRec
 
 function printBill(booking) {
   document.body.classList.add('printing-receipt');
-  window.setTimeout(() => {
-    window.print();
+  stopScannerCamera();
+  window.setTimeout(() => window.print(), 50);
+  window.onafterprint = () => {
     document.body.classList.remove('printing-receipt');
-  }, 150);
+    document.getElementById('receipt-popup-container').classList.remove('active');
+    document.getElementById('scan-feedback-success').style.display = 'none';
+    document.getElementById('scanner-prompt-text').innerText = 'Align barcode inside screen viewport';
+    initScannerView();
+  };
 }
 
 function escapePrintText(value) {
