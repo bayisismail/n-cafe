@@ -583,6 +583,17 @@ async function cancelPaymentGateway(showAlert = true) {
   AppRouter.navigateTo('home');
 }
 
+window.addEventListener('pagehide', () => {
+  if (!CanteenState.currentLockId || !navigator.sendBeacon) return;
+
+  const payload = new Blob(
+    [JSON.stringify({ lockId: CanteenState.currentLockId })],
+    { type: 'application/json' }
+  );
+  navigator.sendBeacon('/api/locks/release', payload);
+  CanteenState.currentLockId = null;
+});
+
 // --- UPI PAYMENT GATEWAY INTERACTIVE INTERFACE ---
 let selectedGatewayTab = 'qr';
 function initPaymentGatewaySandbox() {
