@@ -76,11 +76,11 @@ To process credit cards, cards, net banking, or UPI:
 1. Log in to your [Razorpay Dashboard](https://dashboard.razorpay.com).
 2. Navigate to **Account & Settings > API Keys** and generate new **Key ID** and **Key Secret** (you can start in Test Mode).
 3. Access the **N Cafe Owner Admin Panel** (at `http://your-site.com/admin` or `/admin`).
-4. Log in using the admin password (default: `Admin@NCafeHills2026!`).
+4. Log in using the administrator password configured in the deployment environment.
 5. Open **Part 4: Cash Ledger & Bank Settings** (Tab 4).
 6. Scroll to **Razorpay Payment Gateway**, enter your **Key ID** and **Key Secret**, and click **Save**.
 
-*If keys are saved, the customer ordering portal will automatically load the real Razorpay Checkout modal for order verification. If keys are left blank, it falls back to a simulated sandbox so you can test orders offline.*
+*If keys are saved, the customer ordering portal will automatically load the real Razorpay Checkout modal for order verification.*
 
 ---
 

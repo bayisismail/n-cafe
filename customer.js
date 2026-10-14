@@ -467,6 +467,7 @@ document.getElementById('checkout-form').addEventListener('submit', async (e) =>
     });
     if (res.ok) {
       const data = await res.json();
+      payload.id = data.bookingId;
       CanteenState.currentLockId = data.lockId;
       
       // Save customer details to local storage
@@ -1044,7 +1045,10 @@ async function processRazorpayCheckout(bookingData, keyId) {
     const orderRes = await fetch('/api/payments/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: bookingData.totalAmount })
+      body: JSON.stringify({
+        amount: bookingData.totalAmount,
+        bookingData
+      })
     });
 
     if (!orderRes.ok) {
