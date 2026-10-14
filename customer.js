@@ -708,10 +708,6 @@ document.getElementById('btn-otp-submit').addEventListener('click', () => {
   }
 });
 
-document.getElementById('btn-npay-qr-success').addEventListener('click', () => {
-  finalizeCanteenOrder('UPI QR Scan');
-});
-
 // --- FINALIZE ORDER & POST TO DATABASE ---
 async function finalizeCanteenOrder(paymentMethodText) {
   if (checkoutTimerInterval) {
@@ -955,7 +951,7 @@ function downloadReceipt(b) {
   content += `Subtotal:                      ₹${sub}\n`;
   content += `Total Paid:                    ₹${b.totalAmount}\n`;
   content += `========================================\n`;
-  content += `Simulated Prepaid order (UPI QR)\n`;
+  content += `Prepaid order (UPI)\n`;
   content += `Show this ticket at counter to redeem.\n`;
 
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });

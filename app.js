@@ -1296,10 +1296,6 @@ document.getElementById('btn-npay-vpa-request').addEventListener('click', () => 
   }, 3000);
 });
 
-document.getElementById('btn-npay-qr-success').addEventListener('click', () => {
-  finalizeCanteenOrder('UPI QR Scan');
-});
-
 function openOTPChallengeModal() {
   const overlay = document.getElementById('otp-modal-overlay');
   overlay.classList.add('active');
