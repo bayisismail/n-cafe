@@ -295,7 +295,6 @@ const ScannerState = {
 
       if (res.status === 200 || res.status === 201) {
         const data = await res.json();
-        this.openReceiptPopup(data.booking);
         this.printBill(data.booking);
         
         feedbackSuccess.style.display = 'flex';
@@ -397,10 +396,15 @@ const ScannerState = {
 
   printBill(booking) {
     document.body.classList.add('printing-receipt');
-    window.setTimeout(() => {
-      window.print();
+    this.stopScannerCamera();
+    window.setTimeout(() => window.print(), 50);
+    window.onafterprint = () => {
       document.body.classList.remove('printing-receipt');
-    }, 150);
+      document.getElementById('receipt-popup-container').classList.remove('active');
+      document.getElementById('scan-feedback-success').style.display = 'none';
+      document.getElementById('scanner-prompt-text').innerText = 'Align barcode inside screen viewport';
+      this.initScannerView();
+    };
   },
 
   closeReceiptPopup() {
