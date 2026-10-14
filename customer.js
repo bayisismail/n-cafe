@@ -467,7 +467,6 @@ document.getElementById('checkout-form').addEventListener('submit', async (e) =>
     });
     if (res.ok) {
       const data = await res.json();
-      payload.id = data.bookingId;
       CanteenState.currentLockId = data.lockId;
       
       // Save customer details to local storage
@@ -518,33 +517,14 @@ document.getElementById('checkout-form').addEventListener('submit', async (e) =>
             }
           }
 
-          // Fallback to Sandbox Simulator
-          document.getElementById('checkout-form-details').style.display = 'none';
-          document.getElementById('btn-place-order').style.display = 'none';
-          
-          const simContainer = document.getElementById('payment-simulation-container');
-          simContainer.style.display = 'block';
-
-          const totalText = document.getElementById('checkout-total').innerText;
-          simContainer.querySelector('.npay-amount-tag').innerText = `Amount: ${totalText}`;
-
-          initPaymentGatewaySandbox();
-          startCheckoutReservationTimer(data.lockId);
+          await cancelPaymentGateway(false);
+          alert('Online payment is not configured. Please contact the cafe administrator.');
         })
         .catch(err => {
-          console.warn("Payments config failed, falling back to simulated sandbox:", err);
-          // Fallback
-          document.getElementById('checkout-form-details').style.display = 'none';
-          document.getElementById('btn-place-order').style.display = 'none';
-          
-          const simContainer = document.getElementById('payment-simulation-container');
-          simContainer.style.display = 'block';
-
-          const totalText = document.getElementById('checkout-total').innerText;
-          simContainer.querySelector('.npay-amount-tag').innerText = `Amount: ${totalText}`;
-
-          initPaymentGatewaySandbox();
-          startCheckoutReservationTimer(data.lockId);
+          console.warn("Payments configuration could not be loaded:", err);
+          cancelPaymentGateway(false).then(() => {
+            alert('Unable to load online payment configuration. Please try again later.');
+          });
         });
     } else {
       alert('Failed to reserve food stock. Please try again.');
@@ -578,7 +558,7 @@ function startCheckoutReservationTimer(lockId) {
   }, 1000);
 }
 
-async function cancelPaymentGateway() {
+async function cancelPaymentGateway(showAlert = true) {
   if (checkoutTimerInterval) {
     clearInterval(checkoutTimerInterval);
     checkoutTimerInterval = null;
@@ -597,7 +577,9 @@ async function cancelPaymentGateway() {
     CanteenState.currentLockId = null;
   }
 
-  alert('Payment checkout cancelled. Portions returned to menu.');
+  if (showAlert) {
+    alert('Payment checkout cancelled. Portions returned to menu.');
+  }
   AppRouter.navigateTo('home');
 }
 
