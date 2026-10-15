@@ -1370,7 +1370,7 @@ const AdminState = {
     if (tbody) {
       tbody.innerHTML = '';
       if (this.foodItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No menu items found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No menu items found.</td></tr>`;
       }
       this.foodItems.forEach(f => {
         const tr = document.createElement('tr');
@@ -1389,6 +1389,12 @@ const AdminState = {
             <div style="display:flex; align-items:center; gap:0.4rem;">
               <input type="number" class="stock-inline-edit" data-id="${f.id}" value="${f.stock}" style="width:55px; padding:0.25rem; font-size:0.8rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
               <button class="btn-sm btn-save-stock" data-id="${f.id}" style="padding:0.25rem 0.4rem; font-size:0.75rem;"><i class="fas fa-save"></i></button>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="number" class="stock-add-input" data-id="${f.id}" value="0" min="0" step="1" style="width:55px; padding:0.25rem; font-size:0.8rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
+              <button class="btn-sm btn-add-stock" data-id="${f.id}" style="padding:0.25rem 0.4rem; font-size:0.75rem; background:var(--success); color:#fff; border:none;" title="Add stock"><i class="fas fa-plus"></i></button>
             </div>
           </td>
           <td>
@@ -1420,6 +1426,7 @@ const AdminState = {
                 offerPrice: newOfferPrice
               })
             });
+
             if (res.ok) {
               await this.fetchFoodItems();
               this.renderTab(2);
@@ -1427,6 +1434,39 @@ const AdminState = {
             }
           } catch (err) {
             console.error(err);
+          }
+        });
+
+        tr.querySelector('.btn-add-stock').addEventListener('click', async () => {
+          const addInput = tr.querySelector('.stock-add-input');
+          const addStock = parseInt(addInput.value, 10);
+          if (isNaN(addStock) || addStock <= 0) return alert("Enter a stock quantity greater than zero.");
+
+          try {
+            const res = await this.fetchWithAuth(`/api/food-items/${f.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: f.name,
+                price: f.price,
+                stock: f.stock + addStock,
+                category: f.category,
+                isveg: f.isveg,
+                image: f.image,
+                details: f.details,
+                offerPrice: f.offerPrice
+              })
+            });
+            if (res.ok) {
+              await this.fetchFoodItems();
+              this.renderTab(2);
+              alert(`${addStock} stock added to ${f.name}.`);
+            } else {
+              const error = await res.json().catch(() => ({}));
+              alert(error.error || "Failed to add stock.");
+            }
+          } catch (err) {
+            console.error(err);
+            alert("Failed to add stock.");
           }
         });
 
