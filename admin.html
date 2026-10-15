@@ -21,7 +21,7 @@
   <div class="passcode-backdrop active" id="admin-login-gate">
     <div class="passcode-card" id="login-modal-card" style="width: 380px;">
       <div class="logo-container" style="justify-content: center; margin-bottom: 1.5rem;">
-        <div class="logo-icon">N</div>
+        <div class="logo-icon"><span id="admin-login-logo-fallback">N</span><img id="admin-login-logo-image" alt="N Cafe logo"></div>
         <div class="logo-text" style="text-align: left;">
           <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin: 0;">N <span>Cafe</span></h2>
           <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Misty Hills Kitchen</p>
@@ -53,7 +53,7 @@
     <!-- Top Header Navigation -->
     <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-dark); padding-bottom: 1rem; margin-bottom: 1.5rem; background: transparent; box-shadow: none;">
       <div class="logo-container">
-        <div class="logo-icon">N</div>
+        <div class="logo-icon"><span id="admin-logo-fallback">N</span><img id="admin-logo-image" alt="N Cafe logo"></div>
         <div class="logo-text">
           <h1>N <span>Cafe</span></h1>
           <p>Admin Control Dashboard</p>
@@ -565,6 +565,7 @@
                   <input type="file" id="branding-logo-upload" accept="image/*" hidden>
                 </label>
                 <small style="display:block; color:var(--text-muted); margin-top:0.25rem;">Recommended: 512 x 512 px, max 5 MB.</small>
+                <img id="branding-logo-preview" alt="Logo preview" style="display:none; width:72px; height:72px; object-fit:contain; border-radius:12px; margin-top:0.6rem; background:var(--surface-subtle);">
                 <label for="branding-logo-background-color" style="display:block; margin-top:0.75rem;">Logo Background Color</label>
                 <input type="color" id="branding-logo-background-color" value="#1b4d3e" style="width: 100%; height: 42px; padding: 0.2rem; cursor: pointer;">
                 <small style="display:block; color:var(--text-muted); margin-top:0.25rem;">Choose the color behind the logo on the customer header.</small>
@@ -577,6 +578,7 @@
                   <input type="file" id="branding-banner-upload" accept="image/*" hidden>
                 </label>
                 <small style="display:block; color:var(--text-muted); margin-top:0.25rem;">Recommended: 1600 x 600 px, max 5 MB.</small>
+                <div id="branding-banner-preview" style="display:none; height:100px; margin-top:0.6rem; border-radius:10px; background-size:cover; background-position:center;"></div>
               </div>
             </div>
             <button type="button" id="btn-save-branding-settings" class="btn-sm btn-sm-accent w-full" style="padding: 0.6rem; margin-top: 0.5rem;">

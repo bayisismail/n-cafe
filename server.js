@@ -659,7 +659,10 @@ app.post('/api/upload-image', authenticateToken(['admin']), (req, res) => {
     const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Clean, 'base64');
     
-    const safeName = path.basename(imageName).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const originalName = path.basename(imageName).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const extension = path.extname(originalName);
+    const baseName = path.basename(originalName, extension);
+    const safeName = `${baseName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
     const targetPath = path.join(__dirname, 'assets', safeName);
 
     fs.writeFile(targetPath, buffer, (err) => {
