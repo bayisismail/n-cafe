@@ -1030,6 +1030,12 @@ const AdminState = {
     
     const histSearch = document.getElementById('history-search-input');
     if (histSearch) histSearch.addEventListener('input', () => this.updateHistoryTableOnly());
+
+    const histFromDate = document.getElementById('history-filter-from');
+    if (histFromDate) histFromDate.addEventListener('change', () => this.updateHistoryTableOnly());
+
+    const histToDate = document.getElementById('history-filter-to');
+    if (histToDate) histToDate.addEventListener('change', () => this.updateHistoryTableOnly());
     
     const histExport = document.getElementById('btn-export-history-csv');
     if (histExport) histExport.addEventListener('click', () => this.exportUnifiedHistoryCSV());
@@ -1627,58 +1633,7 @@ const AdminState = {
     const tbody = document.getElementById('history-tbody');
     if (!tbody) return;
 
-    const filterType = document.getElementById('history-filter-type').value;
-    const searchQuery = document.getElementById('history-search-input').value.trim().toLowerCase();
-
-    // Compile events from transactions and bookings
-    let events = this.transactions.map(t => {
-      let category = 'other';
-      if (t.type === 'sale') {
-        category = 'sales';
-      } else if (t.type === 'purchase') {
-        category = 'purchases';
-      } else if (t.type === 'expense' && t.title.startsWith('Used in Kitchen -')) {
-        category = 'usages';
-      }
-
-      return {
-        id: t.id,
-        timestamp: t.timestamp,
-        category,
-        title: t.title,
-        amount: t.amount,
-        details: t.details || '',
-        rawTx: t
-      };
-    });
-
-    // Sort chronologically descending
-    events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    // Apply category filter
-    if (filterType !== 'All') {
-      events = events.filter(e => e.category === filterType);
-    }
-
-    // Apply search filter
-    if (searchQuery) {
-      events = events.filter(e => {
-        const titleMatch = e.title.toLowerCase().includes(searchQuery);
-        const detailsMatch = e.details.toLowerCase().includes(searchQuery);
-        const amountMatch = e.amount.toString().includes(searchQuery);
-        
-        let bookingMatch = false;
-        if (e.category === 'sales') {
-          const matchingBooking = this.bookings.find(b => b.bookingTime === e.timestamp);
-          if (matchingBooking) {
-            bookingMatch = matchingBooking.customerName.toLowerCase().includes(searchQuery) ||
-                           matchingBooking.customerPhone.toLowerCase().includes(searchQuery) ||
-                           matchingBooking.id.toLowerCase().includes(searchQuery);
-          }
-        }
-        return titleMatch || detailsMatch || amountMatch || bookingMatch;
-      });
-    }
+    const events = this.getFilteredUnifiedHistoryEvents();
 
     tbody.innerHTML = '';
     if (events.length === 0) {
@@ -1956,8 +1911,33 @@ const AdminState = {
   },
 
   exportUnifiedHistoryCSV() {
+    const events = this.getFilteredUnifiedHistoryEvents();
+
+    if (events.length === 0) return alert("Nothing to export.");
+
+    let csv = "Timestamp,Category,Transaction ID,Description/Summary,Amount,Details\n";
+    events.forEach(e => {
+      const time = new Date(e.timestamp).toLocaleString().replace(/"/g, '""');
+      const category = e.category.toUpperCase();
+      const amountVal = e.category === 'sales' ? `+${e.amount}` : (e.category === 'purchases' ? `-${e.amount}` : `${e.amount}`);
+      csv += `"${time}","${category}","${e.id}","${e.title.replace(/"/g, '""')}",${amountVal},"${e.details.replace(/"/g, '""')}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `n_cafe_unified_history_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+  },
+
+  getFilteredUnifiedHistoryEvents() {
     const filterType = document.getElementById('history-filter-type').value;
     const searchQuery = document.getElementById('history-search-input').value.trim().toLowerCase();
+    const fromDate = document.getElementById('history-filter-from')?.value;
+    const toDate = document.getElementById('history-filter-to')?.value;
+    const fromTimestamp = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
+    const toTimestamp = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : null;
 
     let events = this.transactions.map(t => {
       let category = 'other';
@@ -1986,6 +1966,14 @@ const AdminState = {
       events = events.filter(e => e.category === filterType);
     }
 
+    if (fromTimestamp !== null) {
+      events = events.filter(e => new Date(e.timestamp).getTime() >= fromTimestamp);
+    }
+
+    if (toTimestamp !== null) {
+      events = events.filter(e => new Date(e.timestamp).getTime() <= toTimestamp);
+    }
+
     if (searchQuery) {
       events = events.filter(e => {
         const titleMatch = e.title.toLowerCase().includes(searchQuery);
@@ -2005,22 +1993,7 @@ const AdminState = {
       });
     }
 
-    if (events.length === 0) return alert("Nothing to export.");
-
-    let csv = "Timestamp,Category,Transaction ID,Description/Summary,Amount,Details\n";
-    events.forEach(e => {
-      const time = new Date(e.timestamp).toLocaleString().replace(/"/g, '""');
-      const category = e.category.toUpperCase();
-      const amountVal = e.category === 'sales' ? `+${e.amount}` : (e.category === 'purchases' ? `-${e.amount}` : `${e.amount}`);
-      csv += `"${time}","${category}","${e.id}","${e.title.replace(/"/g, '""')}",${amountVal},"${e.details.replace(/"/g, '""')}"\n`;
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `n_cafe_unified_history_${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
+    return events;
   },
 
   exportInventoryCSV() {
