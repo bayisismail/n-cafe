@@ -20,6 +20,9 @@
   --shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
   --glass-bg: rgba(18, 26, 22, 0.85);
   --glass-border: rgba(255, 255, 255, 0.06);
+  --surface-subtle: rgba(255, 255, 255, 0.03);
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.03);
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -31,6 +34,9 @@
   --text-muted: #5d6b64;
   --glass-bg: rgba(255, 255, 255, 0.9);
   --glass-border: rgba(15, 48, 37, 0.12);
+  --surface-subtle: #eef3f0;
+  --surface-hover: #e4ece7;
+  --input-bg: #ffffff;
   --shadow: 0 15px 35px rgba(15, 48, 37, 0.14);
 }
 
@@ -88,6 +94,55 @@ body {
 .theme-toggle:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+:root[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
+  background: var(--input-bg) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-dark) !important;
+}
+
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .admin-panel,
+:root[data-theme="light"] .admin-card {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+}
+
+:root[data-theme="light"] .report-filters {
+  background: var(--surface-subtle) !important;
+  border-color: var(--border-dark) !important;
+}
+
+:root[data-theme="light"] .admin-tab-btn.active,
+:root[data-theme="light"] .admin-table th,
+:root[data-theme="light"] .admin-table tr:hover td,
+:root[data-theme="light"] .pay-opt-card:hover,
+:root[data-theme="light"] .bank-item:hover,
+:root[data-theme="light"] .tagline-badge {
+  background: var(--surface-hover);
+}
+
+:root[data-theme="light"] .admin-table td {
+  border-bottom-color: var(--border-dark);
+}
+
+:root[data-theme="light"] .admin-table th {
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .qty-adjust-input,
+:root[data-theme="light"] .search-bar,
+:root[data-theme="light"] .cat-btn,
+:root[data-theme="light"] .pay-opt-card,
+:root[data-theme="light"] .bank-item {
+  background: var(--input-bg);
 }
 
 /* Scrollbar Customization */
