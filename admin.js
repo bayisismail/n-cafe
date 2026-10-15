@@ -130,6 +130,10 @@ const AdminState = {
     const res = await fetch('/api/settings');
     if (res.ok) {
       this.accountDetails = await res.json();
+      const logoInput = document.getElementById('branding-logo-input');
+      const bannerInput = document.getElementById('branding-banner-input');
+      if (logoInput) logoInput.value = this.accountDetails.logoImage || '';
+      if (bannerInput) bannerInput.value = this.accountDetails.heroBannerImage || '';
     }
   },
 
@@ -486,6 +490,41 @@ const AdminState = {
       });
     }
 
+    const uploadBrandingImage = (inputId, fieldId) => {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+          alert('Image file too large! Please upload an image under 5MB.');
+          input.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const res = await this.fetchWithAuth('/api/upload-image', {
+              method: 'POST',
+              body: JSON.stringify({ imageName: file.name, base64Data: event.target.result })
+            });
+            if (!res.ok) {
+              const error = await res.json();
+              throw new Error(error.error || 'Image upload failed.');
+            }
+            const data = await res.json();
+            document.getElementById(fieldId).value = data.imagePath;
+          } catch (err) {
+            console.error('Branding image upload failed:', err);
+            alert(err.message);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+    uploadBrandingImage('branding-logo-upload', 'branding-logo-input');
+    uploadBrandingImage('branding-banner-upload', 'branding-banner-input');
+
     // Report filters change
     document.getElementById('report-filter-item').addEventListener('change', () => this.updateSalesReportTable());
     document.getElementById('report-filter-date').addEventListener('change', () => this.updateSalesReportTable());
@@ -689,8 +728,10 @@ const AdminState = {
       const accNo = document.getElementById('acc-no-input').value.trim();
       const ifsc = document.getElementById('acc-ifsc-input').value.trim();
       const ticketExpiryHours = parseInt(document.getElementById('acc-expiry-input').value, 10) || 5;
+      const logoImage = document.getElementById('branding-logo-input').value.trim();
+      const heroBannerImage = document.getElementById('branding-banner-input').value.trim();
 
-      const payload = { name, upiId, bank, accNo, ifsc, ticketExpiryHours };
+      const payload = { name, upiId, bank, accNo, ifsc, ticketExpiryHours, logoImage, heroBannerImage };
 
       try {
         const res = await this.fetchWithAuth('/api/settings', {

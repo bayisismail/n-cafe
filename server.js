@@ -406,7 +406,9 @@ function seedDatabase() {
         accNo: '39485710293',
         ifsc: 'SBIN0008472',
         upiId: 'ncafe.canteen@okaxis',
-        ticketExpiryHours: 5
+        ticketExpiryHours: 5,
+        logoImage: '',
+        heroBannerImage: ''
       };
       db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('account_details', ?)", [JSON.stringify(defaultAcc)]);
     }
@@ -663,12 +665,22 @@ app.get('/api/settings', (req, res) => {
 
 // Save Account Details (Admin auth required)
 app.post('/api/settings', authenticateToken(['admin']), (req, res) => {
-  const { name, bank, accNo, ifsc, upiId, ticketExpiryHours } = req.body;
+  const { name, bank, accNo, ifsc, upiId, ticketExpiryHours, logoImage, heroBannerImage } = req.body;
   if (!name || !bank || !accNo || !ifsc || !upiId) {
     return res.status(400).json({ error: 'All fields are required.' });
   }
 
-  const newAcc = { name, bank, accNo, ifsc, upiId, ticketExpiryHours: ticketExpiryHours ? parseInt(ticketExpiryHours, 10) : 5 };
+  const safeImagePath = (value) => typeof value === 'string' && /^assets\/[A-Za-z0-9._-]+$/.test(value) ? value : '';
+  const newAcc = {
+    name,
+    bank,
+    accNo,
+    ifsc,
+    upiId,
+    ticketExpiryHours: ticketExpiryHours ? parseInt(ticketExpiryHours, 10) : 5,
+    logoImage: safeImagePath(logoImage),
+    heroBannerImage: safeImagePath(heroBannerImage)
+  };
   db.run("UPDATE settings SET value = ? WHERE key = 'account_details'", [JSON.stringify(newAcc)], (err) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to save account settings.' });

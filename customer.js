@@ -59,6 +59,17 @@ const CanteenState = {
       const res = await fetch('/api/settings');
       if (res.ok) {
         this.accountDetails = await res.json();
+        const logo = document.getElementById('customer-logo-image');
+        if (logo && this.accountDetails.logoImage) {
+          logo.src = this.accountDetails.logoImage;
+          logo.style.display = 'block';
+          const fallback = document.getElementById('customer-logo-fallback');
+          if (fallback) fallback.style.display = 'none';
+        }
+        const hero = document.getElementById('customer-hero-banner');
+        if (hero && this.accountDetails.heroBannerImage) {
+          hero.style.setProperty('--hero-image', `url("${this.accountDetails.heroBannerImage}")`);
+        }
       }
     } catch (e) {
       console.warn("Failed to fetch settings from API, using default merchant particulars:", e);
