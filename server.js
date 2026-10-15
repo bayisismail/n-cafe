@@ -408,7 +408,8 @@ function seedDatabase() {
         upiId: 'ncafe.canteen@okaxis',
         ticketExpiryHours: 5,
         logoImage: '',
-        heroBannerImage: ''
+        heroBannerImage: '',
+        logoBackgroundColor: '#1b4d3e'
       };
       db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('account_details', ?)", [JSON.stringify(defaultAcc)]);
     }
@@ -665,12 +666,13 @@ app.get('/api/settings', (req, res) => {
 
 // Save Account Details (Admin auth required)
 app.post('/api/settings', authenticateToken(['admin']), (req, res) => {
-  const { name, bank, accNo, ifsc, upiId, ticketExpiryHours, logoImage, heroBannerImage } = req.body;
+  const { name, bank, accNo, ifsc, upiId, ticketExpiryHours, logoImage, heroBannerImage, logoBackgroundColor } = req.body;
   if (!name || !bank || !accNo || !ifsc || !upiId) {
     return res.status(400).json({ error: 'All fields are required.' });
   }
 
   const safeImagePath = (value) => typeof value === 'string' && /^assets\/[A-Za-z0-9._-]+$/.test(value) ? value : '';
+  const safeColor = (value) => typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#1b4d3e';
   const newAcc = {
     name,
     bank,
@@ -679,7 +681,8 @@ app.post('/api/settings', authenticateToken(['admin']), (req, res) => {
     upiId,
     ticketExpiryHours: ticketExpiryHours ? parseInt(ticketExpiryHours, 10) : 5,
     logoImage: safeImagePath(logoImage),
-    heroBannerImage: safeImagePath(heroBannerImage)
+    heroBannerImage: safeImagePath(heroBannerImage),
+    logoBackgroundColor: safeColor(logoBackgroundColor)
   };
   db.run("UPDATE settings SET value = ? WHERE key = 'account_details'", [JSON.stringify(newAcc)], (err) => {
     if (err) {
