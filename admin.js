@@ -137,6 +137,43 @@ const AdminState = {
       if (bannerInput) bannerInput.value = this.accountDetails.heroBannerImage || '';
       const logoBackgroundColor = document.getElementById('branding-logo-background-color');
       if (logoBackgroundColor) logoBackgroundColor.value = this.accountDetails.logoBackgroundColor || '#1b4d3e';
+      this.applyBranding();
+    }
+  },
+
+  applyBranding() {
+    const logoPath = this.accountDetails.logoImage || '';
+    const bannerPath = this.accountDetails.heroBannerImage || '';
+    const logoSelectors = [
+      ['admin-login-logo-image', 'admin-login-logo-fallback'],
+      ['admin-logo-image', 'admin-logo-fallback']
+    ];
+
+    logoSelectors.forEach(([imageId, fallbackId]) => {
+      const image = document.getElementById(imageId);
+      const fallback = document.getElementById(fallbackId);
+      if (!image || !fallback) return;
+      if (logoPath) {
+        image.src = `/${logoPath}`;
+        image.style.display = 'block';
+        fallback.style.display = 'none';
+      } else {
+        image.removeAttribute('src');
+        image.style.display = 'none';
+        fallback.style.display = 'inline';
+      }
+      image.parentElement.style.background = this.accountDetails.logoBackgroundColor || '#1b4d3e';
+    });
+
+    const logoPreview = document.getElementById('branding-logo-preview');
+    if (logoPreview) {
+      logoPreview.src = logoPath ? `/${logoPath}` : '';
+      logoPreview.style.display = logoPath ? 'block' : 'none';
+    }
+    const bannerPreview = document.getElementById('branding-banner-preview');
+    if (bannerPreview) {
+      bannerPreview.style.backgroundImage = bannerPath ? `url("/${bannerPath}")` : 'none';
+      bannerPreview.style.display = bannerPath ? 'block' : 'none';
     }
   },
 
@@ -525,6 +562,11 @@ const AdminState = {
             }
             const data = await res.json();
             document.getElementById(fieldId).value = data.imagePath;
+            if (fieldId === 'branding-logo-input' || fieldId === 'branding-banner-input') {
+              if (fieldId === 'branding-logo-input') this.accountDetails.logoImage = data.imagePath;
+              if (fieldId === 'branding-banner-input') this.accountDetails.heroBannerImage = data.imagePath;
+              this.applyBranding();
+            }
           } catch (err) {
             console.error('Branding image upload failed:', err);
             alert(err.message);
