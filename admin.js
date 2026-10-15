@@ -722,21 +722,17 @@ const AdminState = {
     document.getElementById('btn-export-inventory').addEventListener('click', () => this.exportInventoryCSV());
     document.getElementById('btn-export-ledger').addEventListener('click', () => this.exportLedgerCSV());
 
-    // Account settings Form
-    document.getElementById('tab3-account-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('acc-name-input').value.trim();
-      const upiId = document.getElementById('acc-upi-input').value.trim();
-      const bank = document.getElementById('acc-bank-input').value.trim();
-      const accNo = document.getElementById('acc-no-input').value.trim();
-      const ifsc = document.getElementById('acc-ifsc-input').value.trim();
-      const ticketExpiryHours = parseInt(document.getElementById('acc-expiry-input').value, 10) || 5;
+    const saveAccountSettings = async (successMessage) => {
+      const name = document.getElementById('acc-name-input').value.trim() || this.accountDetails.name;
+      const upiId = document.getElementById('acc-upi-input').value.trim() || this.accountDetails.upiId;
+      const bank = document.getElementById('acc-bank-input').value.trim() || this.accountDetails.bank;
+      const accNo = document.getElementById('acc-no-input').value.trim() || this.accountDetails.accNo;
+      const ifsc = document.getElementById('acc-ifsc-input').value.trim() || this.accountDetails.ifsc;
+      const ticketExpiryHours = parseInt(document.getElementById('acc-expiry-input').value, 10) || this.accountDetails.ticketExpiryHours || 5;
       const logoImage = document.getElementById('branding-logo-input').value.trim();
       const heroBannerImage = document.getElementById('branding-banner-input').value.trim();
       const logoBackgroundColor = document.getElementById('branding-logo-background-color').value;
-
       const payload = { name, upiId, bank, accNo, ifsc, ticketExpiryHours, logoImage, heroBannerImage, logoBackgroundColor };
-
       try {
         const res = await this.fetchWithAuth('/api/settings', {
           method: 'POST',
@@ -744,13 +740,25 @@ const AdminState = {
         });
         if (res.ok) {
           await this.fetchAccountDetails();
-          alert("Account profile saved successfully!");
+          alert(successMessage);
         } else {
-          alert("Failed to save settings.");
+          const error = await res.json().catch(() => ({}));
+          alert(error.error || "Failed to save settings.");
         }
       } catch (err) {
         console.error(err);
+        alert("Failed to save settings.");
       }
+    };
+
+    // Account settings Form
+    document.getElementById('tab3-account-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await saveAccountSettings("Account profile saved successfully!");
+    });
+
+    document.getElementById('btn-save-branding-settings').addEventListener('click', async () => {
+      await saveAccountSettings("Branding settings saved successfully!");
     });
 
     // Credentials toggle and Form
