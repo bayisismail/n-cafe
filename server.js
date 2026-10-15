@@ -390,6 +390,25 @@ function initializeDatabase() {
 }
 
 function seedDatabase() {
+  db.get("SELECT value FROM settings WHERE key = 'food_listing_migration_v1'", (migrationErr, migrationRow) => {
+    if (migrationErr) {
+      console.error('Failed to check food listing migration:', migrationErr);
+    } else if (!migrationRow) {
+      db.run("UPDATE food_items SET listed = 1", (updateErr) => {
+        if (updateErr) {
+          console.error('Failed to normalize legacy food visibility:', updateErr);
+          return;
+        }
+        db.run(
+          "INSERT INTO settings (key, value) VALUES ('food_listing_migration_v1', 'completed')",
+          (insertErr) => {
+            if (insertErr) console.error('Failed to record food listing migration:', insertErr);
+          }
+        );
+      });
+    }
+  });
+
   db.get("SELECT COUNT(*) as count FROM settings WHERE key = 'admin_password'", (err, row) => {
     if (err) return console.error(err);
     if (parseInt(row.count, 10) === 0) {
@@ -776,7 +795,7 @@ app.get('/api/food-items', (req, res) => {
 
 // Get the complete food catalog for the admin inventory view.
 app.get('/api/admin/food-items', authenticateToken(['admin']), (req, res) => {
-  db.all("SELECT * FROM food_items", (err, foods) => {
+  db.all("SELECT id, name, price, stock, category, isveg, image, details, offer_price, COALESCE(listed, 1) AS listed FROM food_items", (err, foods) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(foods.map(f => ({ ...f, offerPrice: f.offer_price, listed: Boolean(f.listed) })));
   });
