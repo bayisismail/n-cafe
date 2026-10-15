@@ -219,16 +219,22 @@ const AdminState = {
     if (!tbody) return;
 
     const filterItem = document.getElementById('report-filter-item').value;
-    const filterDate = document.getElementById('report-filter-date').value;
+    const filterFrom = document.getElementById('report-filter-from').value;
+    const filterTo = document.getElementById('report-filter-to').value;
     const filterAmt = parseFloat(document.getElementById('report-filter-amount').value) || 0;
+    const fromTimestamp = filterFrom ? new Date(`${filterFrom}T00:00:00`).getTime() : null;
+    const toTimestamp = filterTo ? new Date(`${filterTo}T23:59:59.999`).getTime() : null;
 
     let filtered = [...this.bookings];
 
     if (filterItem !== 'All') {
       filtered = filtered.filter(b => b.items.some(i => i.foodItemId === filterItem));
     }
-    if (filterDate) {
-      filtered = filtered.filter(b => b.bookingTime.startsWith(filterDate));
+    if (fromTimestamp !== null) {
+      filtered = filtered.filter(b => new Date(b.bookingTime).getTime() >= fromTimestamp);
+    }
+    if (toTimestamp !== null) {
+      filtered = filtered.filter(b => new Date(b.bookingTime).getTime() <= toTimestamp);
     }
     if (filterAmt > 0) {
       filtered = filtered.filter(b => b.totalAmount >= filterAmt);
@@ -530,7 +536,8 @@ const AdminState = {
 
     // Report filters change
     document.getElementById('report-filter-item').addEventListener('change', () => this.updateSalesReportTable());
-    document.getElementById('report-filter-date').addEventListener('change', () => this.updateSalesReportTable());
+    document.getElementById('report-filter-from').addEventListener('change', () => this.updateSalesReportTable());
+    document.getElementById('report-filter-to').addEventListener('change', () => this.updateSalesReportTable());
     document.getElementById('report-filter-amount').addEventListener('input', () => this.updateSalesReportTable());
 
     // Part 3 Form: Log Purchase
