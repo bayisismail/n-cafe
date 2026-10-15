@@ -321,11 +321,15 @@ function initializeDatabase() {
       category TEXT NOT NULL,
       isveg TEXT NOT NULL,
       image TEXT NOT NULL,
-      details TEXT
+      details TEXT,
+      listed INTEGER NOT NULL DEFAULT 1
     )`);
 
     // Migration: Add offer_price column if it does not exist
     db.run("ALTER TABLE food_items ADD COLUMN offer_price REAL DEFAULT NULL", (err) => {
+      // Ignore error if column already exists
+    });
+    db.run("ALTER TABLE food_items ADD COLUMN listed INTEGER NOT NULL DEFAULT 1", (err) => {
       // Ignore error if column already exists
     });
 
@@ -744,7 +748,7 @@ app.post('/api/special-offer', authenticateToken(['admin']), (req, res) => {
 
 // Get Food Catalog (Takes temporary locks into account)
 app.get('/api/food-items', (req, res) => {
-  db.all("SELECT * FROM food_items", (err, foods) => {
+  db.all("SELECT * FROM food_items WHERE listed = 1", (err, foods) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const now = Date.now();
@@ -770,9 +774,17 @@ app.get('/api/food-items', (req, res) => {
   });
 });
 
+// Get the complete food catalog for the admin inventory view.
+app.get('/api/admin/food-items', authenticateToken(['admin']), (req, res) => {
+  db.all("SELECT * FROM food_items", (err, foods) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(foods.map(f => ({ ...f, offerPrice: f.offer_price, listed: Boolean(f.listed) })));
+  });
+});
+
 // Add Food Item (Admin required)
 app.post('/api/food-items', authenticateToken(['admin']), (req, res) => {
-  const { id, name, price, stock, category, isveg, image, details, offerPrice } = req.body;
+  const { id, name, price, stock, category, isveg, image, details, offerPrice, listed } = req.body;
   if (!id || !name || price == null || stock == null || !category || !isveg || !image) {
     return res.status(400).json({ error: 'Invalid food payload.' });
   }
@@ -780,8 +792,8 @@ app.post('/api/food-items', authenticateToken(['admin']), (req, res) => {
   const parsedOfferPrice = (offerPrice === '' || offerPrice === undefined || offerPrice === null) ? null : parseFloat(offerPrice);
 
   db.run(
-    "INSERT INTO food_items (id, name, price, stock, category, isveg, image, details, offer_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, name, price, stock, category, isveg, image, details || '', parsedOfferPrice],
+    "INSERT INTO food_items (id, name, price, stock, category, isveg, image, details, offer_price, listed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, name, price, stock, category, isveg, image, details || '', parsedOfferPrice, listed === false ? 0 : 1],
     function(err) {
       if (err) return res.status(500).json({ error: err.message || 'ID already exists or DB error.' });
       res.json({ success: true, id });
@@ -791,13 +803,13 @@ app.post('/api/food-items', authenticateToken(['admin']), (req, res) => {
 
 // Edit Food Item (Admin required)
 app.put('/api/food-items/:id', authenticateToken(['admin']), (req, res) => {
-  const { name, price, stock, category, isveg, image, details, offerPrice } = req.body;
+  const { name, price, stock, category, isveg, image, details, offerPrice, listed } = req.body;
   const foodId = req.params.id;
   const parsedOfferPrice = (offerPrice === '' || offerPrice === undefined || offerPrice === null) ? null : parseFloat(offerPrice);
 
   db.run(
-    "UPDATE food_items SET name = ?, price = ?, stock = ?, category = ?, isveg = ?, image = ?, details = ?, offer_price = ? WHERE id = ?",
-    [name, price, stock, category, isveg, image, details || '', parsedOfferPrice, foodId],
+    "UPDATE food_items SET name = ?, price = ?, stock = ?, category = ?, isveg = ?, image = ?, details = ?, offer_price = ?, listed = ? WHERE id = ?",
+    [name, price, stock, category, isveg, image, details || '', parsedOfferPrice, listed === false ? 0 : 1, foodId],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, message: 'Item updated successfully.' });
@@ -1055,7 +1067,7 @@ app.post('/api/payments/create-order', (req, res) => {
   }
 
   // Fetch Razorpay credentials from db or environment
-  db.all("SELECT * FROM food_items", (catalogErr, catalog) => {
+  db.all("SELECT * FROM food_items WHERE listed = 1", (catalogErr, catalog) => {
     if (catalogErr) return res.status(500).json({ error: 'Unable to validate menu items.' });
     const safeName = cleanText(bookingData.customerName, 120);
     const safePhone = cleanText(bookingData.customerPhone, 15);
@@ -1150,7 +1162,7 @@ app.post('/api/payments/verify-signature', (req, res) => {
       // Check stock & finalize booking
       const { id, customerName, customerPhone, passkey, items, totalAmount, lockId } = bookingData;
 
-      db.all("SELECT * FROM food_items", (err, catalog) => {
+      db.all("SELECT * FROM food_items WHERE listed = 1", (err, catalog) => {
         if (err) return res.status(500).json({ error: err.message });
 
         let stockIssues = [];
@@ -1235,7 +1247,7 @@ app.post('/api/bookings', rateLimit(60 * 1000, 20, 'booking-create'), (req, res)
   }
 
   // 1. Double check current catalog stock
-  db.all("SELECT * FROM food_items", (err, catalog) => {
+  db.all("SELECT * FROM food_items WHERE listed = 1", (err, catalog) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const normalizedItems = normalizeBookingItems(items, catalog);

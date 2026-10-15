@@ -100,7 +100,7 @@ const AdminState = {
   },
 
   async fetchFoodItems() {
-    const res = await fetch('/api/food-items');
+    const res = await this.fetchWithAuth('/api/admin/food-items');
     if (res.ok) {
       this.foodItems = await res.json();
     }
@@ -400,6 +400,7 @@ const AdminState = {
       const offerPrice = offerPriceInput && offerPriceInput.value ? parseFloat(offerPriceInput.value) : null;
       const stock = parseInt(document.getElementById('tab2-add-stock').value, 10);
       const category = document.getElementById('tab2-add-category').value;
+      const listed = document.getElementById('tab2-add-listed').checked;
       const isveg = document.getElementById('tab2-add-isveg').value;
       const imagePath = document.getElementById('tab2-add-image').value;
       const desc = document.getElementById('tab2-add-desc').value.trim();
@@ -421,7 +422,8 @@ const AdminState = {
         isveg,
         image: imagePath,
         details: desc,
-        offerPrice
+        offerPrice,
+        listed
       };
 
       try {
@@ -1369,10 +1371,11 @@ const AdminState = {
     const tbody = document.getElementById('tab2-menu-tbody');
     if (tbody) {
       tbody.innerHTML = '';
-      if (this.foodItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No menu items found.</td></tr>`;
+      const listedItems = this.foodItems.filter(f => f.listed !== false);
+      if (listedItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No menu items found.</td></tr>`;
       }
-      this.foodItems.forEach(f => {
+      listedItems.forEach(f => {
         const tr = document.createElement('tr');
         const imgName = f.image.split('/').pop(); // Extract basename
         tr.innerHTML = `
@@ -1389,12 +1392,6 @@ const AdminState = {
             <div style="display:flex; align-items:center; gap:0.4rem;">
               <input type="number" class="stock-inline-edit" data-id="${f.id}" value="${f.stock}" style="width:55px; padding:0.25rem; font-size:0.8rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
               <button class="btn-sm btn-save-stock" data-id="${f.id}" style="padding:0.25rem 0.4rem; font-size:0.75rem;"><i class="fas fa-save"></i></button>
-            </div>
-          </td>
-          <td>
-            <div style="display:flex; align-items:center; gap:0.4rem;">
-              <input type="number" class="stock-add-input" data-id="${f.id}" value="0" min="0" step="1" style="width:55px; padding:0.25rem; font-size:0.8rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px; text-align:center;">
-              <button class="btn-sm btn-add-stock" data-id="${f.id}" style="padding:0.25rem 0.4rem; font-size:0.75rem; background:var(--success); color:#fff; border:none;" title="Add stock"><i class="fas fa-plus"></i></button>
             </div>
           </td>
           <td>
@@ -1423,7 +1420,8 @@ const AdminState = {
                 isveg: f.isveg,
                 image: f.image,
                 details: f.details,
-                offerPrice: newOfferPrice
+                offerPrice: newOfferPrice,
+                listed: true
               })
             });
 
@@ -1434,39 +1432,6 @@ const AdminState = {
             }
           } catch (err) {
             console.error(err);
-          }
-        });
-
-        tr.querySelector('.btn-add-stock').addEventListener('click', async () => {
-          const addInput = tr.querySelector('.stock-add-input');
-          const addStock = parseInt(addInput.value, 10);
-          if (isNaN(addStock) || addStock <= 0) return alert("Enter a stock quantity greater than zero.");
-
-          try {
-            const res = await this.fetchWithAuth(`/api/food-items/${f.id}`, {
-              method: 'PUT',
-              body: JSON.stringify({
-                name: f.name,
-                price: f.price,
-                stock: f.stock + addStock,
-                category: f.category,
-                isveg: f.isveg,
-                image: f.image,
-                details: f.details,
-                offerPrice: f.offerPrice
-              })
-            });
-            if (res.ok) {
-              await this.fetchFoodItems();
-              this.renderTab(2);
-              alert(`${addStock} stock added to ${f.name}.`);
-            } else {
-              const error = await res.json().catch(() => ({}));
-              alert(error.error || "Failed to add stock.");
-            }
-          } catch (err) {
-            console.error(err);
-            alert("Failed to add stock.");
           }
         });
 
@@ -1489,6 +1454,80 @@ const AdminState = {
 
         tbody.appendChild(tr);
       });
+
+      const unlistedTbody = document.getElementById('tab2-unlisted-tbody');
+      if (unlistedTbody) {
+        const unlistedItems = this.foodItems.filter(f => f.listed === false);
+        unlistedTbody.innerHTML = '';
+        if (unlistedItems.length === 0) {
+          unlistedTbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No unlisted food stock found.</td></tr>`;
+        }
+        unlistedItems.forEach(f => {
+          const tr = document.createElement('tr');
+          const imgName = f.image.split('/').pop();
+          tr.innerHTML = `
+            <td><img src="assets/${imgName}" style="width:36px; height:36px; border-radius:6px; object-fit:cover;"></td>
+            <td><strong>${f.name}</strong></td>
+            <td>${f.category}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:0.4rem;">
+                <strong>${f.stock}</strong>
+                <input type="number" class="unlisted-add-stock" min="1" value="1" style="width:55px; padding:0.25rem; background:var(--bg-dark); border:1px solid var(--border-dark); color:#fff; border-radius:4px;">
+                <button class="btn-sm unlisted-add-button" style="background:var(--success); color:#fff; border:none;" title="Add stock"><i class="fas fa-plus"></i></button>
+              </div>
+            </td>
+            <td><button class="btn-sm unlisted-publish-button btn-sm-accent">Add to Menu</button></td>
+            <td><button class="btn-sm unlisted-delete-button" style="background:rgba(234,67,53,0.1); color:#ea4335; border:1px solid rgba(234,67,53,0.2);"><i class="fas fa-trash"></i></button></td>
+          `;
+
+          const updateUnlisted = async (stock, listed) => {
+            const res = await this.fetchWithAuth(`/api/food-items/${f.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: f.name, price: f.price, stock, category: f.category,
+                isveg: f.isveg, image: f.image, details: f.details,
+                offerPrice: f.offerPrice, listed
+              })
+            });
+            if (!res.ok) throw new Error('Failed to update unlisted food stock.');
+            await this.fetchFoodItems();
+            this.renderTab(2);
+          };
+
+          tr.querySelector('.unlisted-add-button').addEventListener('click', async () => {
+            const amount = parseInt(tr.querySelector('.unlisted-add-stock').value, 10);
+            if (isNaN(amount) || amount <= 0) return alert('Enter a quantity greater than zero.');
+            try {
+              await updateUnlisted(f.stock + amount, false);
+            } catch (err) {
+              console.error(err);
+              alert(err.message);
+            }
+          });
+          tr.querySelector('.unlisted-publish-button').addEventListener('click', async () => {
+            try {
+              await updateUnlisted(f.stock, true);
+              alert(`${f.name} is now available in the customer menu.`);
+            } catch (err) {
+              console.error(err);
+              alert(err.message);
+            }
+          });
+          tr.querySelector('.unlisted-delete-button').addEventListener('click', async () => {
+            if (!confirm(`Delete ${f.name} from unlisted stock?`)) return;
+            try {
+              const res = await this.fetchWithAuth(`/api/food-items/${f.id}`, { method: 'DELETE' });
+              if (!res.ok) throw new Error('Failed to delete unlisted food.');
+              await this.fetchFoodItems();
+              this.renderTab(2);
+            } catch (err) {
+              console.error(err);
+              alert(err.message);
+            }
+          });
+          unlistedTbody.appendChild(tr);
+        });
+      }
     }
 
 
