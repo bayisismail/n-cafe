@@ -1214,10 +1214,10 @@ app.post('/api/payments/verify-signature', (req, res) => {
           db.serialize(() => {
             db.run("BEGIN TRANSACTION");
 
-            const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
+            const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ?, listed = CASE WHEN stock - ? <= 0 THEN 0 ELSE listed END WHERE id = ?");
             items.forEach(item => {
               if (item.foodItemId !== 'FD-SPECIAL') {
-                updateStmt.run([item.quantity, item.foodItemId]);
+                updateStmt.run([item.quantity, item.quantity, item.foodItemId]);
               }
             });
             updateStmt.finalize();
@@ -1308,9 +1308,9 @@ app.post('/api/bookings', rateLimit(60 * 1000, 20, 'booking-create'), (req, res)
         db.run("BEGIN TRANSACTION");
 
         // Reduce item stock levels
-        const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ? WHERE id = ?");
+        const updateStmt = db.prepare("UPDATE food_items SET stock = stock - ?, listed = CASE WHEN stock - ? <= 0 THEN 0 ELSE listed END WHERE id = ?");
         normalizedItems.forEach(item => {
-          updateStmt.run([item.quantity, item.foodItemId]);
+          updateStmt.run([item.quantity, item.quantity, item.foodItemId]);
         });
         updateStmt.finalize();
 
