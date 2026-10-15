@@ -1043,7 +1043,7 @@ app.post('/api/bookings/retrieve', (req, res) => {
         items: JSON.parse(r.items),
         passkey: undefined
       }));
-      if (processed.length === 0) return res.status(404).json({ error: 'No matching active tickets found.' });
+      if (processed.length === 0) return res.status(404).json({ error: 'No pending tickets found for this name and pass key.' });
       res.json(processed);
     }
   );
