@@ -1028,11 +1028,18 @@ document.getElementById('retrieval-form').addEventListener('submit', async (e) =
         resultsContainer.appendChild(div);
       });
     } else {
-      alert('Failed to search tickets.');
+      const errorData = await res.json().catch(() => ({}));
+      if (res.status === 404) {
+        alert('No pending tickets found for this name and pass key.');
+      } else if (res.status === 400) {
+        alert(errorData.error || 'Enter your full name and 4-digit pass key.');
+      } else {
+        alert(errorData.error || 'Unable to search tickets right now. Please try again.');
+      }
     }
   } catch (err) {
     console.error(err);
-    alert('Error connecting to backend.');
+    alert('Unable to connect to the ticket service. Please try again.');
   }
 });
 
