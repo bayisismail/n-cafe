@@ -13,7 +13,8 @@ const AdminState = {
     bank: 'State Bank of India',
     accNo: '39485710293',
     ifsc: 'SBIN0008472',
-    upiId: 'ncafe.canteen@okaxis'
+    upiId: 'ncafe.canteen@okaxis',
+    logoBackgroundColor: '#1b4d3e'
   },
 
   async init() {
@@ -134,6 +135,8 @@ const AdminState = {
       const bannerInput = document.getElementById('branding-banner-input');
       if (logoInput) logoInput.value = this.accountDetails.logoImage || '';
       if (bannerInput) bannerInput.value = this.accountDetails.heroBannerImage || '';
+      const logoBackgroundColor = document.getElementById('branding-logo-background-color');
+      if (logoBackgroundColor) logoBackgroundColor.value = this.accountDetails.logoBackgroundColor || '#1b4d3e';
     }
   },
 
@@ -730,8 +733,9 @@ const AdminState = {
       const ticketExpiryHours = parseInt(document.getElementById('acc-expiry-input').value, 10) || 5;
       const logoImage = document.getElementById('branding-logo-input').value.trim();
       const heroBannerImage = document.getElementById('branding-banner-input').value.trim();
+      const logoBackgroundColor = document.getElementById('branding-logo-background-color').value;
 
-      const payload = { name, upiId, bank, accNo, ifsc, ticketExpiryHours, logoImage, heroBannerImage };
+      const payload = { name, upiId, bank, accNo, ifsc, ticketExpiryHours, logoImage, heroBannerImage, logoBackgroundColor };
 
       try {
         const res = await this.fetchWithAuth('/api/settings', {

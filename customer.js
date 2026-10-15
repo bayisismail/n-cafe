@@ -66,6 +66,10 @@ const CanteenState = {
           const fallback = document.getElementById('customer-logo-fallback');
           if (fallback) fallback.style.display = 'none';
         }
+        const logoContainer = document.querySelector('.logo-icon');
+        if (logoContainer) {
+          logoContainer.style.background = this.accountDetails.logoBackgroundColor || '#1b4d3e';
+        }
         const hero = document.getElementById('customer-hero-banner');
         if (hero && this.accountDetails.heroBannerImage) {
           hero.style.setProperty('--hero-image', `url("${this.accountDetails.heroBannerImage}")`);
