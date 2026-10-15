@@ -192,7 +192,7 @@ function renderFoodMenu(filterCategory = 'all', searchQuery = '') {
   menuGrid.innerHTML = '';
 
   // Filter out the special offer combo so it doesn't render in main list
-  let filtered = CanteenState.foodItems.filter(f => f.id !== 'FD-SPECIAL');
+  let filtered = CanteenState.foodItems.filter(f => f.id !== 'FD-SPECIAL' && f.availableStock > 0);
 
   if (filterCategory.toLowerCase() !== 'all') {
     filtered = filtered.filter(f => f.category.toLowerCase() === filterCategory.toLowerCase());

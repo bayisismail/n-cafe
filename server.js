@@ -770,7 +770,7 @@ app.post('/api/special-offer', authenticateToken(['admin']), (req, res) => {
 
 // Get Food Catalog (Takes temporary locks into account)
 app.get('/api/food-items', (req, res) => {
-  db.all("SELECT * FROM food_items WHERE listed = 1", (err, foods) => {
+  db.all("SELECT * FROM food_items WHERE listed = 1 AND stock > 0", (err, foods) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const now = Date.now();
@@ -831,7 +831,7 @@ app.put('/api/food-items/:id', authenticateToken(['admin']), (req, res) => {
 
   db.run(
     "UPDATE food_items SET name = ?, price = ?, stock = ?, category = ?, isveg = ?, image = ?, details = ?, offer_price = ?, listed = ? WHERE id = ?",
-    [name, price, stock, category, isveg, image, details || '', parsedOfferPrice, listed === false ? 0 : 1, foodId],
+    [name, price, stock, category, isveg, image, details || '', parsedOfferPrice, listed === false || Number(stock) <= 0 ? 0 : 1, foodId],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, message: 'Item updated successfully.' });
@@ -1089,7 +1089,7 @@ app.post('/api/payments/create-order', (req, res) => {
   }
 
   // Fetch Razorpay credentials from db or environment
-  db.all("SELECT * FROM food_items WHERE listed = 1", (catalogErr, catalog) => {
+  db.all("SELECT * FROM food_items WHERE listed = 1 AND stock > 0", (catalogErr, catalog) => {
     if (catalogErr) return res.status(500).json({ error: 'Unable to validate menu items.' });
     const safeName = cleanText(bookingData.customerName, 120);
     const safePhone = cleanText(bookingData.customerPhone, 15);
@@ -1184,7 +1184,7 @@ app.post('/api/payments/verify-signature', (req, res) => {
       // Check stock & finalize booking
       const { id, customerName, customerPhone, passkey, items, totalAmount, lockId } = bookingData;
 
-      db.all("SELECT * FROM food_items WHERE listed = 1", (err, catalog) => {
+      db.all("SELECT * FROM food_items WHERE listed = 1 AND stock > 0", (err, catalog) => {
         if (err) return res.status(500).json({ error: err.message });
 
         let stockIssues = [];
@@ -1269,7 +1269,7 @@ app.post('/api/bookings', rateLimit(60 * 1000, 20, 'booking-create'), (req, res)
   }
 
   // 1. Double check current catalog stock
-  db.all("SELECT * FROM food_items WHERE listed = 1", (err, catalog) => {
+  db.all("SELECT * FROM food_items WHERE listed = 1 AND stock > 0", (err, catalog) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const normalizedItems = normalizeBookingItems(items, catalog);
