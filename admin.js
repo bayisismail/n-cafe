@@ -1441,7 +1441,7 @@ const AdminState = {
       this.foodItems.forEach(f => {
         const tr = document.createElement('tr');
         const imgName = f.image.split('/').pop(); // Extract basename
-        const isListed = f.listed !== false && Number(f.stock) > 0;
+        const isListed = Boolean(f.listed) && Number(f.stock) > 0;
         tr.innerHTML = `
           <td><img src="assets/${imgName}" style="width:36px; height:36px; border-radius:6px; object-fit:cover;" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2236%22 height=%2236%22><rect width=%2236%22 height=%2236%22 fill=%22%23222%22/></svg>'"></td>
           <td><strong>${f.name}</strong><br><span style="font-size:0.7rem; color:var(--text-muted);">${f.category} | ${f.isveg}</span></td>
