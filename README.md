@@ -24,8 +24,8 @@ access. Deploy it as a **Web Service**, not a Static Site.
    - `ADMIN_PASSWORD`: a strong administrator password.
    - `OPERATOR_PIN`: exactly four digits.
    - `ALLOWED_ORIGIN`: your Render HTTPS URL, such as `https://n-cafe.onrender.com`.
-   - `DATABASE_URL`: your PostgreSQL connection string. This is required for hosted
-     production because Render's web-service filesystem is not a durable database.
+   - `MONGODB_URI`: your MongoDB Atlas connection string.
+   - `MONGODB_DATABASE`: MongoDB database name, normally `n_cafe`.
 6. Click **Create Web Service**.
 
 Render does not load `.env.example` automatically. Enter these values in the service's
@@ -38,16 +38,10 @@ Deploy latest commit**.
 
 ## Understanding the Database
 
-The server stores menus, orders, ledger transactions, and inventory in SQLite for local
-development. Hosted production requires PostgreSQL through `DATABASE_URL`; the server
-will refuse to start rather than silently using disposable SQLite storage. The included
-`render.yaml` provisions a Render PostgreSQL database and connects it to the web service.
-The local `.env` file is ignored by Git.
-
-If an older deployment used SQLite, its custom menu and settings cannot be recovered from
-a fresh redeploy unless you first export them from the old running instance. Configure
-PostgreSQL before deploying new changes, then verify the Render service shows the same
-`DATABASE_URL` after each deploy.
+The server uses MongoDB when `MONGODB_URI` is configured. MongoDB Atlas is recommended
+for hosted production because it persists menus, orders, ledger transactions, settings,
+and inventory across redeploys. SQLite remains available for local development when
+MongoDB is not configured. The local `.env` file is ignored by Git.
 
 ## Local Development
 

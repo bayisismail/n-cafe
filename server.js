@@ -8,6 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -23,6 +24,12 @@ if (missingEnvironment.length > 0) {
 }
 if (JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must contain at least 32 random characters.');
+}
+const isHostedProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+if (isHostedProduction && !process.env.MONGODB_URI) {
+  throw new Error(
+    'MONGODB_URI is required in hosted production. Configure a MongoDB Atlas connection string in Render.'
+  );
 }
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'n-cafe-data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -99,21 +106,18 @@ app.use(express.static(path.join(__dirname), {
 // --- DATABASE INITIALIZATION & SCHEMA CREATION ---
 class DB {
   constructor() {
+    this.isMongo = Boolean(process.env.MONGODB_URI);
     this.isPostgres = false;
+    this.ready = false;
     this.queue = Promise.resolve();
 
-    const configuredDbUrl = process.env.DATABASE_URL;
-    const dbUrl = typeof configuredDbUrl === 'string'
-      ? configuredDbUrl.trim().replace(/^(['"])(.*)\1$/, '$2').trim()
-      : '';
-    const isHostedProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-    if (isHostedProduction && !dbUrl) {
-      throw new Error(
-        'DATABASE_URL is required in hosted production. Configure a persistent PostgreSQL database; ' +
-        'SQLite on the deployment filesystem is not durable across redeploys.'
-      );
+    if (this.isMongo) {
+      this.mongoClient = new MongoClient(process.env.MONGODB_URI);
+      this.mongoDb = null;
+      return;
     }
 
+    const dbUrl = process.env.DATABASE_URL;
     if (dbUrl && (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://'))) {
       try {
         const { Client } = require('pg');
@@ -126,21 +130,11 @@ class DB {
           }
         });
       } catch (err) {
-        throw new Error(`PostgreSQL database could not be initialized: ${err.message}`);
+        console.error("PostgreSQL driver ('pg') failed to load. Defaulting to SQLite.", err);
+        this.isPostgres = false;
+        this.sqliteDb = new sqlite3.Database(DB_PATH);
       }
     } else {
-      if (dbUrl) {
-        let scheme = 'unknown';
-        try {
-          scheme = new URL(dbUrl).protocol.replace(':', '') || scheme;
-        } catch (err) {
-          // Keep the diagnostic safe: never print the configured database URL.
-        }
-        throw new Error(
-          `DATABASE_URL must be a PostgreSQL connection string (received scheme "${scheme}"). ` +
-          'In Render, set it to the database connection string, not the database name or dashboard URL.'
-        );
-      }
       this.sqliteDb = new sqlite3.Database(DB_PATH);
     }
   }
@@ -171,17 +165,28 @@ class DB {
   }
 
   connect(callback) {
-    if (this.isPostgres) {
+    if (this.isMongo) {
+      this.mongoClient.connect()
+        .then(() => {
+          this.mongoDb = this.mongoClient.db(process.env.MONGODB_DATABASE || 'n_cafe');
+          this.ready = true;
+          console.log('Connected to MongoDB database successfully.');
+          callback(null);
+        })
+        .catch(callback);
+    } else if (this.isPostgres) {
       this.pgClient.connect((err) => {
         if (err) {
           console.error("Failed to connect to PostgreSQL:", err);
           callback(err);
         } else {
           console.log("Connected to PostgreSQL database successfully.");
+          this.ready = true;
           callback(null);
         }
       });
     } else {
+      this.ready = true;
       console.log("Connected to SQLite database at:", DB_PATH);
       callback(null);
     }
@@ -209,7 +214,7 @@ class DB {
   }
 
   serialize(cb) {
-    if (this.isPostgres) {
+    if (this.isMongo || this.isPostgres) {
       cb();
     } else {
       this.sqliteDb.serialize(cb);
@@ -222,6 +227,10 @@ class DB {
       params = [];
     }
     params = params || [];
+    if (this.isMongo) {
+      this.mongoRun(sql, params, cb);
+      return;
+    }
     const translatedSql = this.translateQuery(sql);
 
     if (this.isPostgres) {
@@ -244,6 +253,10 @@ class DB {
       params = [];
     }
     params = params || [];
+    if (this.isMongo) {
+      this.mongoGet(sql, params, cb);
+      return;
+    }
     const translatedSql = this.translateQuery(sql);
 
     if (this.isPostgres) {
@@ -271,6 +284,10 @@ class DB {
       params = [];
     }
     params = params || [];
+    if (this.isMongo) {
+      this.mongoAll(sql, params, cb);
+      return;
+    }
     const translatedSql = this.translateQuery(sql);
 
     if (this.isPostgres) {
@@ -293,6 +310,27 @@ class DB {
   }
 
   prepare(sql) {
+    if (this.isMongo) {
+      const self = this;
+      const operations = [];
+      return {
+        run(params, cb) {
+          operations.push({ params, cb });
+        },
+        finalize(cb) {
+          const next = (index) => {
+            if (index >= operations.length) return cb && cb();
+            const operation = operations[index];
+            self.mongoRun(sql, operation.params, (err) => {
+              if (operation.cb) operation.cb(err);
+              if (err) return cb && cb(err);
+              next(index + 1);
+            });
+          };
+          next(0);
+        }
+      };
+    }
     const translatedSql = this.translateQuery(sql);
     const self = this;
 
@@ -319,6 +357,142 @@ class DB {
       };
     }
   }
+
+  mongoCollection(table) {
+    return this.mongoDb.collection(table);
+  }
+
+  mongoTable(sql) {
+    const match = sql.match(/(?:FROM|INTO|UPDATE|TABLE)\s+([a-z_]+)/i);
+    return match && match[1];
+  }
+
+  mongoWhere(sql, params) {
+    const match = sql.match(/WHERE\s+(.+?)(?:\s+ORDER BY|\s+GROUP BY|$)/i);
+    if (!match) return {};
+    const where = {};
+    let index = 0;
+    match[1].split(/\s+AND\s+/i).forEach(condition => {
+      const part = condition.match(/(?:LOWER\()?([a-zA-Z_]+)\)?\s*(=|!=|<=|>=|<|>)\s*(\?|'.*?'|".*?")/i);
+      if (!part) return;
+      if (/^LOWER\(/i.test(condition)) return;
+      const valueToken = part[3];
+      const rawValue = valueToken === '?'
+        ? params[index++]
+        : valueToken.slice(1, -1);
+      const value = typeof rawValue === 'string' && /^-?\d+(?:\.\d+)?$/.test(rawValue)
+        ? Number(rawValue)
+        : rawValue;
+      where[part[1]] = part[2] === '=' ? value : {
+        '!=': { $ne: value }, '<=': { $lte: value }, '>=': { $gte: value },
+        '<': { $lt: value }, '>': { $gt: value }
+      }[part[2]];
+    });
+    return where;
+  }
+
+  mongoRun(sql, params, cb) {
+    if (!this.mongoDb) return cb && cb(new Error('MongoDB connection is not ready.'));
+    const statement = sql.trim().replace(/\s+/g, ' ');
+    const done = (err) => cb && cb(err);
+    if (/^(CREATE|ALTER|DROP|BEGIN|COMMIT|ROLLBACK)/i.test(statement)) return done(null);
+    const table = this.mongoTable(statement);
+    if (!table) return done(new Error(`Unsupported MongoDB statement: ${statement}`));
+    const collection = this.mongoCollection(table);
+
+    if (/^INSERT OR REPLACE INTO settings/i.test(statement)) {
+      return collection.updateOne({ key: params[0] }, { $set: { key: params[0], value: params[1] } }, { upsert: true })
+        .then(() => done(null)).catch(done);
+    }
+    if (/^INSERT INTO/i.test(statement)) {
+      const fieldsMatch = statement.match(/INSERT INTO\s+[a-z_]+\s*\(([^)]+)\)/i);
+      const fields = fieldsMatch ? fieldsMatch[1].split(',').map(field => field.trim()) : [];
+      const document = Object.fromEntries(fields.map((field, index) => [field, params[index]]));
+      const idField = document.id !== undefined ? 'id' : document.key !== undefined ? 'key' : null;
+      const operation = idField
+        ? collection.updateOne({ [idField]: document[idField] }, { $set: document }, { upsert: true })
+        : collection.insertOne(document);
+      return operation.then(() => done(null)).catch(done);
+    }
+    if (/^DELETE FROM/i.test(statement)) {
+      return collection.deleteMany(this.mongoWhere(statement, params)).then(() => done(null)).catch(done);
+    }
+    if (/^UPDATE food_items SET stock = stock -/i.test(statement)) {
+      const quantity = Number(params[0]);
+      return collection.updateOne({ id: params[2] }, [
+        { $set: { stock: { $subtract: ['$stock', quantity] } } },
+        { $set: { listed: { $cond: [{ $lte: ['$stock', 0] }, 0, '$listed'] } } }
+      ]).then(() => done(null)).catch(done);
+    }
+    if (/^UPDATE/i.test(statement)) {
+      const updateMatch = statement.match(/^UPDATE\s+[a-z_]+\s+SET\s+(.+?)\s+WHERE\s+(.+)$/i);
+      if (!updateMatch) return done(new Error(`Unsupported MongoDB update: ${statement}`));
+      const assignments = updateMatch[1].split(/\s*,\s*/);
+      const update = {};
+      let parameterIndex = 0;
+      assignments.forEach(assignment => {
+        const assignmentMatch = assignment.match(/^([a-zA-Z_]+)\s*=\s*(.+)$/);
+        if (!assignmentMatch) return;
+        const field = assignmentMatch[1];
+        const rawValue = assignmentMatch[2].trim();
+        if (rawValue === '?') {
+          update[field] = params[parameterIndex++];
+        } else if (/^'.*'$/.test(rawValue) || /^".*"$/.test(rawValue)) {
+          update[field] = rawValue.slice(1, -1);
+        }
+      });
+      const where = this.mongoWhere(`WHERE ${updateMatch[2]}`, params.slice(parameterIndex));
+      return collection.updateMany(where, { $set: update }).then(() => done(null)).catch(done);
+    }
+    return done(new Error(`Unsupported MongoDB statement: ${statement}`));
+  }
+
+  async mongoRows(sql, params) {
+    if (!this.mongoDb) throw new Error('MongoDB connection is not ready.');
+    const statement = sql.trim().replace(/\s+/g, ' ');
+    const table = this.mongoTable(statement);
+    const collection = this.mongoCollection(table);
+    let rows = await collection.find(this.mongoWhere(statement, params)).toArray();
+    if (/LOWER\(customerName\)/i.test(statement)) {
+      const requestedName = String(params[0] || '').toLowerCase();
+      rows = rows.filter(row => String(row.customerName || '').toLowerCase() === requestedName);
+    }
+    rows = rows.map(row => this.normalizeRow(row));
+    const countMatch = statement.match(/^SELECT COUNT\(\*\)\s+as\s+([a-zA-Z_]+)/i);
+    if (countMatch) return [{ [countMatch[1]]: rows.length }];
+    const sumMatch = statement.match(/^SELECT\s+([a-zA-Z_]+),\s*SUM\(([^)]+)\)\s+as\s+([a-zA-Z_]+)/i);
+    if (sumMatch) {
+      const grouped = new Map();
+      rows.forEach(row => grouped.set(row[sumMatch[1]], (grouped.get(row[sumMatch[1]]) || 0) + Number(row[sumMatch[2]] || 0)));
+      return [...grouped.entries()].map(([key, value]) => ({ [sumMatch[1]]: key, [sumMatch[3]]: value }));
+    }
+    const orderMatch = statement.match(/ORDER BY\s+([a-zA-Z_]+)\s+(ASC|DESC)/i);
+    if (orderMatch) {
+      const direction = orderMatch[2].toUpperCase() === 'DESC' ? -1 : 1;
+      rows.sort((a, b) => (a[orderMatch[1]] > b[orderMatch[1]] ? direction : -direction));
+    }
+    const projectionMatch = statement.match(/^SELECT\s+(.+?)\s+FROM/i);
+    if (projectionMatch && projectionMatch[1] !== '*') {
+      const fields = projectionMatch[1].split(',').map(field => field.trim());
+      return rows.map(row => Object.fromEntries(fields.map(field => {
+        const aliasMatch = field.match(/(?:\s+AS\s+)?([a-zA-Z_]+)$/i);
+        const alias = aliasMatch[1];
+        const sourceExpression = field.split(/\s+AS\s+/i)[0].trim();
+        const source = sourceExpression.split('.').pop();
+        if (/COALESCE\(listed,\s*1\)/i.test(sourceExpression)) return [alias, row.listed ?? 1];
+        return [alias, row[source] ?? (source === 'listed' ? 1 : null)];
+      })));
+    }
+    return rows;
+  }
+
+  mongoGet(sql, params, cb) {
+    this.mongoRows(sql, params).then(rows => cb(null, rows[0] || null)).catch(err => cb(err));
+  }
+
+  mongoAll(sql, params, cb) {
+    this.mongoRows(sql, params).then(rows => cb(null, rows)).catch(err => cb(err));
+  }
 }
 
 const db = new DB();
@@ -326,13 +500,73 @@ const db = new DB();
 db.connect((err) => {
   if (err) {
     console.error('Failed to initialize database connection:', err);
-    process.exit(1);
   } else {
-    initializeDatabase();
+    Promise.resolve(initializeDatabase()).catch((initErr) => {
+      console.error('Failed to initialize database:', initErr);
+    });
   }
 });
 
+async function initializeMongoDatabase() {
+  const settings = db.mongoCollection('settings');
+  const foodItems = db.mongoCollection('food_items');
+  const ingredients = db.mongoCollection('ingredients');
+
+  const defaults = [
+    ['admin_password', bcrypt.hashSync(process.env.ADMIN_PASSWORD, 10)],
+    ['scanner_pin', bcrypt.hashSync(process.env.OPERATOR_PIN, 10)],
+    ['account_details', JSON.stringify({
+      name: 'N Cafe Hills Kitchen Services',
+      bank: 'State Bank of India',
+      accNo: '39485710293',
+      ifsc: 'SBIN0008472',
+      upiId: 'ncafe.canteen@okaxis',
+      ticketExpiryHours: 5,
+      logoImage: '',
+      heroBannerImage: '',
+      logoBackgroundColor: '#1b4d3e'
+    })],
+    ['special_offer', JSON.stringify({
+      active: false,
+      title: 'Special Hills Combo',
+      desc: 'Masala Dosa + Misty Hills Filter Coffee combo at a special discount!',
+      price: 90,
+      image: 'assets/south_indian_meals.png'
+    })]
+  ];
+
+  await Promise.all(defaults.map(([key, value]) =>
+    settings.updateOne({ key }, { $setOnInsert: { key, value } }, { upsert: true })
+  ));
+  await settings.updateOne(
+    { key: 'food_listing_migration_v1' },
+    { $setOnInsert: { key: 'food_listing_migration_v1', value: 'completed' } },
+    { upsert: true }
+  );
+
+  const seedFoods = [
+    ['FD-101', 'Masala Dosa', 60, 50, 'Breakfast', 'Veg', 'assets/masala_dosa.png', 'Crispy golden dosa served with chutney and sambar.'],
+    ['FD-102', 'Filter Coffee', 25, 100, 'Beverages', 'Veg', 'assets/filter_coffee.png', 'Traditional South Indian filter coffee.'],
+    ['FD-103', 'Vada Sambar Combo', 60, 25, 'Breakfast', 'Veg', 'assets/vada_combo.png', 'Crispy vada with hot sambar.'],
+    ['FD-104', 'Meals Thali', 90, 30, 'Lunch', 'Veg', 'assets/south_indian_meals.png', 'Complete South Indian vegetarian meal.']
+  ];
+  await Promise.all(seedFoods.map(([id, name, price, stock, category, isveg, image, details]) =>
+    foodItems.updateOne(
+      { id },
+      { $setOnInsert: { id, name, price, stock, category, isveg, image, details, offer_price: null, listed: stock > 0 ? 1 : 0 } },
+      { upsert: true }
+    )
+  ));
+  await ingredients.createIndex({ id: 1 }, { unique: true });
+  await foodItems.createIndex({ id: 1 }, { unique: true });
+  console.log('MongoDB collections initialized.');
+}
+
 function initializeDatabase() {
+  if (db.isMongo) {
+    initializeMongoDatabase();
+    return;
+  }
   db.serialize(() => {
     // 1. Food Items Table
     db.run(`CREATE TABLE IF NOT EXISTS food_items (
@@ -568,6 +802,7 @@ function authenticateToken(allowedRoles = []) {
 
 // --- BACKGROUND EXPIRED HOLDS CLEANUP ---
 setInterval(() => {
+  if (!db.ready) return;
   const now = Date.now();
   db.run("DELETE FROM locks WHERE expiryTime < ?", [now], function(err) {
     if (err) console.error("Error pruning expired locks:", err);

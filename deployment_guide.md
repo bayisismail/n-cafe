@@ -62,7 +62,9 @@ To host N Cafe online for real customer ordering and payment gateways, you can d
    - **Build Command**: `npm install`
    - **Start Command**: `node server.js`
 5. Click **Advanced** and add the following **Environment Variables**:
-   - `DATABASE_URL`: Paste your PostgreSQL connection string (e.g., `postgresql://...`).
+   - `MONGODB_URI`: Paste your MongoDB Atlas connection string
+     (`mongodb+srv://...`).
+   - `MONGODB_DATABASE`: `n_cafe` (or your chosen database name).
    - `JWT_SECRET`: At least 32 random characters used to sign secure tokens.
    - `ADMIN_PASSWORD`: A strong administrator password.
    - `OPERATOR_PIN`: A 4-digit operator PIN.
@@ -74,10 +76,8 @@ To host N Cafe online for real customer ordering and payment gateways, you can d
    Render's generated-value option, and never commit the values to Git.
 6. Click **Deploy Web Service**. Render will build and start your application.
 
-When `DATABASE_URL` is set, the server switches from SQLite to PostgreSQL and migrates
-schemas. Hosted production must have `DATABASE_URL`; the server refuses to start without
-it so a redeploy cannot silently create a disposable SQLite database and show seeded data.
-Default foods are inserted only when their IDs do not already exist.
+*When `MONGODB_URI` is set, the server automatically switches from SQLite to MongoDB,
+initializes the required collections and indexes, and seeds default foods on startup.*
 
 ---
 
