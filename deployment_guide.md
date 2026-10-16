@@ -76,7 +76,10 @@ To host N Cafe online for real customer ordering and payment gateways, you can d
    Render's generated-value option, and never commit the values to Git.
    If the database password contains characters such as `@`, `:`, `/`, or `#`, URL-encode
    the password before placing it in `MONGODB_URI`. Keep TLS enabled and allow Render's
-   outbound IP access in MongoDB Atlas Network Access.
+   outbound IP access in MongoDB Atlas Network Access. Use the complete Atlas driver
+   string from **Connect > Drivers > Node.js**; do not use the cluster dashboard URL.
+   The connection must include the `mongodb+srv://` scheme and a database user with access
+   to the selected database.
 6. Click **Deploy Web Service**. Render will build and start your application.
 
 *When `MONGODB_URI` is set, the server automatically switches from SQLite to MongoDB,
