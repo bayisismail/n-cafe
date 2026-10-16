@@ -103,6 +103,14 @@ class DB {
     this.queue = Promise.resolve();
 
     const dbUrl = process.env.DATABASE_URL;
+    const isHostedProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+    if (isHostedProduction && !dbUrl) {
+      throw new Error(
+        'DATABASE_URL is required in hosted production. Configure a persistent PostgreSQL database; ' +
+        'SQLite on the deployment filesystem is not durable across redeploys.'
+      );
+    }
+
     if (dbUrl && (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://'))) {
       try {
         const { Client } = require('pg');
@@ -115,11 +123,12 @@ class DB {
           }
         });
       } catch (err) {
-        console.error("PostgreSQL driver ('pg') failed to load. Defaulting to SQLite.", err);
-        this.isPostgres = false;
-        this.sqliteDb = new sqlite3.Database(DB_PATH);
+        throw new Error(`PostgreSQL database could not be initialized: ${err.message}`);
       }
     } else {
+      if (dbUrl) {
+        throw new Error('DATABASE_URL must be a PostgreSQL connection string.');
+      }
       this.sqliteDb = new sqlite3.Database(DB_PATH);
     }
   }
@@ -305,6 +314,7 @@ const db = new DB();
 db.connect((err) => {
   if (err) {
     console.error('Failed to initialize database connection:', err);
+    process.exit(1);
   } else {
     initializeDatabase();
   }

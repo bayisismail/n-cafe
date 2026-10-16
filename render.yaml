@@ -12,6 +12,14 @@ services:
       - key: OPERATOR_PIN
         sync: false
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: n-cafe-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
       - key: ALLOWED_ORIGIN
         sync: false
+databases:
+  - name: n-cafe-db
+    databaseName: n_cafe
+    user: n_cafe
