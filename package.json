@@ -20,7 +20,7 @@
     "sqlite3": "^5.1.7"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "22.x"
   },
   "author": "N Cafe Team",
   "license": "ISC"
