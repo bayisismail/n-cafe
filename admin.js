@@ -2277,6 +2277,14 @@ document.addEventListener('DOMContentLoaded', () => {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const password = document.getElementById('admin-login-password').value;
+      const loginError = document.getElementById('admin-login-error');
+      const showLoginError = (message) => {
+        if (loginError) {
+          loginError.textContent = message;
+          loginError.style.display = 'block';
+        }
+      };
+      if (loginError) loginError.style.display = 'none';
       try {
         const res = await fetch('/api/auth/login-admin', {
           method: 'POST',
@@ -2289,12 +2297,12 @@ document.addEventListener('DOMContentLoaded', () => {
           document.getElementById('admin-login-password').value = '';
           AdminState.init();
         } else {
-          const errData = await res.json();
-          alert(errData.error || "Login failed");
+          const errData = await res.json().catch(() => ({}));
+          showLoginError(errData.error || "Login failed. Please check your password and try again.");
         }
       } catch (err) {
         console.error(err);
-        alert("Server communication error.");
+        showLoginError("Unable to contact the server. Please try again.");
       }
     });
   }
