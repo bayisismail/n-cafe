@@ -206,6 +206,16 @@ class DB {
             const safeTarget = this.mongoUri
               .replace(/:\/\/[^@]+@/, '://***@')
               .replace(/\?.*$/, '');
+            const authenticationFailed = err &&
+              (err.code === 18 || /bad auth|authentication failed/i.test(err.message || ''));
+            if (authenticationFailed) {
+              console.error(
+                `MongoDB authentication failed (${scheme}, ${safeTarget}). ` +
+                'Check the Atlas database username, password, and URL encoding in MONGODB_URI. ' +
+                'The server will not retry until the credentials are corrected and redeployed.'
+              );
+              return;
+            }
             console.error(
               `MongoDB connection failed (${scheme}, ${safeTarget}); ` +
               `retrying in 5 seconds: ${err.message}`
