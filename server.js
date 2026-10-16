@@ -177,13 +177,16 @@ class DB {
   connect(callback) {
     if (this.isMongo) {
       const connectMongo = () => {
-        this.mongoClient = new MongoClient(this.mongoUri, {
+        const mongoOptions = {
           connectTimeoutMS: 10000,
           serverSelectionTimeoutMS: 10000,
-          family: 4,
-          tls: true,
-          tlsAllowInvalidCertificates: false
-        });
+          family: 4
+        };
+        if (this.mongoUri.startsWith('mongodb+srv://')) {
+          mongoOptions.tls = true;
+          mongoOptions.tlsAllowInvalidCertificates = false;
+        }
+        this.mongoClient = new MongoClient(this.mongoUri, mongoOptions);
         this.mongoClient.connect()
           .then(() => {
             this.mongoDb = this.mongoClient.db(process.env.MONGODB_DATABASE || 'n_cafe');
@@ -844,6 +847,17 @@ app.use('/api', (req, res, next) => {
     return res.status(503).json({ error: 'Database is still starting. Please try again in a moment.' });
   }
   next();
+});
+
+app.get('/health', (req, res) => {
+  if (db.ready) return res.json({ status: 'ok', database: 'connected' });
+  res.status(503).json({
+    status: 'degraded',
+    database: db.startupError ? 'unavailable' : 'starting',
+    message: db.startupError
+      ? 'MongoDB is unavailable. Check MONGODB_URI, Atlas Network Access, and database credentials.'
+      : 'Database initialization is still in progress.'
+  });
 });
 
 // --- BACKGROUND EXPIRED HOLDS CLEANUP ---
