@@ -431,6 +431,10 @@ const AdminState = {
     // Part 2 Form: Add Food Item
     document.getElementById('tab2-add-food-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      const form = e.currentTarget;
+      const submitButton = form.querySelector('button[type="submit"]');
+      if (submitButton && submitButton.disabled) return;
       const name = document.getElementById('tab2-add-name').value.trim();
       const price = parseFloat(document.getElementById('tab2-add-price').value);
       const offerPriceInput = document.getElementById('tab2-add-offer-price');
@@ -464,14 +468,27 @@ const AdminState = {
       };
 
       try {
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.dataset.originalText = submitButton.innerHTML;
+          submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+        }
         const res = await this.fetchWithAuth('/api/food-items', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
         if (res.ok) {
-          e.target.reset();
-          await this.fetchFoodItems();
-          this.renderTab(2);
+          const result = await res.json();
+          const addedItem = {
+            ...payload,
+            id: result.id || newId,
+            offerPrice,
+            listed: listed && stock > 0
+          };
+          this.foodItems.push(addedItem);
+          form.reset();
+          document.getElementById('tab2-add-listed').checked = true;
+          this.renderTab2();
           alert("New food item added successfully!");
         } else {
           const errData = await res.json();
@@ -479,6 +496,12 @@ const AdminState = {
         }
       } catch (err) {
         console.error(err);
+        alert("Unable to add the food item. Please try again.");
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.innerHTML = submitButton.dataset.originalText || 'Add Food to Menu';
+        }
       }
     });
 
