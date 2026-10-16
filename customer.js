@@ -86,10 +86,37 @@ const CanteenState = {
       if (res.ok) {
         this.foodItems = await res.json();
         await this.loadSpecialOffer();
+        this.syncCartWithCatalog();
       }
     } catch (e) {
       console.error("Failed to load catalog from API:", e);
     }
+  },
+
+  syncCartWithCatalog() {
+    const availableItems = new Map(
+      this.foodItems
+        .filter(food => food.id === 'FD-SPECIAL' || Number(food.availableStock) > 0)
+        .map(food => [food.id, food])
+    );
+    const syncedCart = [];
+
+    this.cart.forEach(cartItem => {
+      const food = availableItems.get(cartItem.id);
+      if (!food) return;
+
+      const quantity = Math.min(
+        Math.max(0, Number(cartItem.quantity) || 0),
+        Number(food.availableStock)
+      );
+      if (quantity > 0) {
+        syncedCart.push({ ...cartItem, quantity });
+      }
+    });
+
+    const changed = JSON.stringify(syncedCart) !== JSON.stringify(this.cart);
+    this.cart = syncedCart;
+    if (changed) this.saveCart();
   },
 
   async loadSpecialOffer() {
