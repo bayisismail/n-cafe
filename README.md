@@ -24,7 +24,8 @@ access. Deploy it as a **Web Service**, not a Static Site.
    - `ADMIN_PASSWORD`: a strong administrator password.
    - `OPERATOR_PIN`: exactly four digits.
    - `ALLOWED_ORIGIN`: your Render HTTPS URL, such as `https://n-cafe.onrender.com`.
-   - `DATABASE_URL`: your PostgreSQL connection string if using PostgreSQL.
+   - `DATABASE_URL`: your PostgreSQL connection string. This is required for hosted
+     production because Render's web-service filesystem is not a durable database.
 6. Click **Create Web Service**.
 
 Render does not load `.env.example` automatically. Enter these values in the service's
@@ -37,9 +38,16 @@ Deploy latest commit**.
 
 ## Understanding the Database
 
-The server stores menus, orders, ledger transactions, and inventory in SQLite by default.
-Set `DATABASE_URL` to use PostgreSQL in a hosted deployment. The local `.env` file is
-ignored by Git.
+The server stores menus, orders, ledger transactions, and inventory in SQLite for local
+development. Hosted production requires PostgreSQL through `DATABASE_URL`; the server
+will refuse to start rather than silently using disposable SQLite storage. The included
+`render.yaml` provisions a Render PostgreSQL database and connects it to the web service.
+The local `.env` file is ignored by Git.
+
+If an older deployment used SQLite, its custom menu and settings cannot be recovered from
+a fresh redeploy unless you first export them from the old running instance. Configure
+PostgreSQL before deploying new changes, then verify the Render service shows the same
+`DATABASE_URL` after each deploy.
 
 ## Local Development
 
