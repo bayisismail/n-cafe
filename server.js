@@ -101,7 +101,7 @@ app.use((req, res, next) => {
   if (!req.path.startsWith('/api/') && req.method === 'GET' &&
       !publicFiles.has(req.path) &&
       !/^\/assets\/[^/]+\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$/i.test(req.path)) {
-    if (!['/', '/admin', '/scanner'].includes(req.path)) return res.status(404).end();
+    if (!['/', '/admin', '/scanner', '/health'].includes(req.path)) return res.status(404).end();
   }
   next();
 });
