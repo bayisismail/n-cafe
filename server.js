@@ -169,7 +169,6 @@ class DB {
       this.mongoClient.connect()
         .then(() => {
           this.mongoDb = this.mongoClient.db(process.env.MONGODB_DATABASE || 'n_cafe');
-          this.ready = true;
           console.log('Connected to MongoDB database successfully.');
           callback(null);
         })
@@ -181,12 +180,10 @@ class DB {
           callback(err);
         } else {
           console.log("Connected to PostgreSQL database successfully.");
-          this.ready = true;
           callback(null);
         }
       });
     } else {
-      this.ready = true;
       console.log("Connected to SQLite database at:", DB_PATH);
       callback(null);
     }
@@ -501,9 +498,14 @@ db.connect((err) => {
   if (err) {
     console.error('Failed to initialize database connection:', err);
   } else {
-    Promise.resolve(initializeDatabase()).catch((initErr) => {
-      console.error('Failed to initialize database:', initErr);
-    });
+    Promise.resolve(initializeDatabase())
+      .then(() => {
+        db.ready = true;
+        console.log('Database initialization complete.');
+      })
+      .catch((initErr) => {
+        console.error('Failed to initialize database:', initErr);
+      });
   }
 });
 
@@ -564,9 +566,9 @@ async function initializeMongoDatabase() {
 
 function initializeDatabase() {
   if (db.isMongo) {
-    initializeMongoDatabase();
-    return;
+    return initializeMongoDatabase();
   }
+  db.ready = true;
   db.serialize(() => {
     // 1. Food Items Table
     db.run(`CREATE TABLE IF NOT EXISTS food_items (
@@ -799,6 +801,13 @@ function authenticateToken(allowedRoles = []) {
     });
   };
 }
+
+app.use('/api', (req, res, next) => {
+  if (!db.ready) {
+    return res.status(503).json({ error: 'Database is still starting. Please try again in a moment.' });
+  }
+  next();
+});
 
 // --- BACKGROUND EXPIRED HOLDS CLEANUP ---
 setInterval(() => {
