@@ -10,6 +10,13 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { MongoClient } = require('mongodb');
 
+function readEnvironmentValue(name) {
+  const value = process.env[name];
+  return typeof value === 'string'
+    ? value.trim().replace(/^(['"])(.*)\1$/, '$2').trim()
+    : '';
+}
+
 const app = express();
 const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -26,7 +33,8 @@ if (JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must contain at least 32 random characters.');
 }
 const isHostedProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-if (isHostedProduction && !process.env.MONGODB_URI) {
+const configuredMongoUri = readEnvironmentValue('MONGODB_URI');
+if (isHostedProduction && !configuredMongoUri) {
   throw new Error(
     'MONGODB_URI is required in hosted production. Configure a MongoDB Atlas connection string in Render.'
   );
@@ -106,7 +114,8 @@ app.use(express.static(path.join(__dirname), {
 // --- DATABASE INITIALIZATION & SCHEMA CREATION ---
 class DB {
   constructor() {
-    this.isMongo = Boolean(process.env.MONGODB_URI);
+    this.mongoUri = configuredMongoUri;
+    this.isMongo = Boolean(this.mongoUri);
     this.isPostgres = false;
     this.ready = false;
     this.startupError = null;
@@ -168,9 +177,12 @@ class DB {
   connect(callback) {
     if (this.isMongo) {
       const connectMongo = () => {
-        this.mongoClient = new MongoClient(process.env.MONGODB_URI, {
+        this.mongoClient = new MongoClient(this.mongoUri, {
           connectTimeoutMS: 10000,
-          serverSelectionTimeoutMS: 10000
+          serverSelectionTimeoutMS: 10000,
+          family: 4,
+          tls: true,
+          tlsAllowInvalidCertificates: false
         });
         this.mongoClient.connect()
           .then(() => {
@@ -181,7 +193,14 @@ class DB {
           })
           .catch((err) => {
             this.startupError = err;
-            console.error('MongoDB connection failed; retrying in 5 seconds:', err.message);
+            const scheme = this.mongoUri.split(':')[0] || 'unknown';
+            const safeTarget = this.mongoUri
+              .replace(/:\/\/[^@]+@/, '://***@')
+              .replace(/\?.*$/, '');
+            console.error(
+              `MongoDB connection failed (${scheme}, ${safeTarget}); ` +
+              `retrying in 5 seconds: ${err.message}`
+            );
             setTimeout(connectMongo, 5000);
           });
       };

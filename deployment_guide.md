@@ -74,6 +74,9 @@ To host N Cafe online for real customer ordering and payment gateways, you can d
    them manually in the service's **Environment** tab, or create the service from the
    included `render.yaml` Blueprint. Generate `JWT_SECRET` with a password manager or
    Render's generated-value option, and never commit the values to Git.
+   If the database password contains characters such as `@`, `:`, `/`, or `#`, URL-encode
+   the password before placing it in `MONGODB_URI`. Keep TLS enabled and allow Render's
+   outbound IP access in MongoDB Atlas Network Access.
 6. Click **Deploy Web Service**. Render will build and start your application.
 
 *When `MONGODB_URI` is set, the server automatically switches from SQLite to MongoDB,
