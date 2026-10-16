@@ -489,7 +489,6 @@ const AdminState = {
           form.reset();
           document.getElementById('tab2-add-listed').checked = true;
           this.renderTab2();
-          alert("New food item added successfully!");
         } else {
           const errData = await res.json();
           alert(`Error: ${errData.error}`);
@@ -1548,20 +1547,44 @@ const AdminState = {
           }
         });
 
-        tr.querySelector('.btn-delete-food').addEventListener('click', async () => {
-          if (!confirm(`Delete ${f.name} from menu?`)) return;
+        tr.querySelector('.btn-delete-food').addEventListener('click', async (event) => {
+          const deleteButton = event.currentTarget;
+          if (deleteButton.dataset.confirming !== 'true') {
+            deleteButton.dataset.confirming = 'true';
+            deleteButton.innerHTML = '<i class="fas fa-check"></i> Confirm';
+            deleteButton.title = `Confirm deleting ${f.name}`;
+            deleteButton.style.width = 'auto';
+            deleteButton.style.padding = '0.3rem 0.5rem';
+
+            const cancelButton = document.createElement('button');
+            cancelButton.type = 'button';
+            cancelButton.className = 'btn-sm btn-cancel-delete';
+            cancelButton.textContent = 'Cancel';
+            cancelButton.style.cssText = 'margin-left:0.35rem; padding:0.3rem 0.5rem;';
+            cancelButton.addEventListener('click', () => this.renderTab2());
+            deleteButton.parentElement.appendChild(cancelButton);
+            return;
+          }
+
+          deleteButton.disabled = true;
+          deleteButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
           try {
             const res = await this.fetchWithAuth(`/api/food-items/${f.id}`, {
               method: 'DELETE'
             });
             if (res.ok) {
-              await this.foodItems;
               await this.fetchFoodItems();
               this.renderTab(2);
-              alert("Item deleted.");
+            } else {
+              deleteButton.disabled = false;
+              deleteButton.dataset.confirming = 'false';
+              deleteButton.innerHTML = '<i class="fas fa-trash"></i>';
             }
           } catch (err) {
             console.error(err);
+            deleteButton.disabled = false;
+            deleteButton.dataset.confirming = 'false';
+            deleteButton.innerHTML = '<i class="fas fa-trash"></i>';
           }
         });
 
