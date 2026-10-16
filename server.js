@@ -109,10 +109,11 @@ class DB {
     this.isMongo = Boolean(process.env.MONGODB_URI);
     this.isPostgres = false;
     this.ready = false;
+    this.startupError = null;
     this.queue = Promise.resolve();
 
     if (this.isMongo) {
-      this.mongoClient = new MongoClient(process.env.MONGODB_URI);
+      this.mongoClient = null;
       this.mongoDb = null;
       return;
     }
@@ -166,13 +167,25 @@ class DB {
 
   connect(callback) {
     if (this.isMongo) {
-      this.mongoClient.connect()
-        .then(() => {
-          this.mongoDb = this.mongoClient.db(process.env.MONGODB_DATABASE || 'n_cafe');
-          console.log('Connected to MongoDB database successfully.');
-          callback(null);
-        })
-        .catch(callback);
+      const connectMongo = () => {
+        this.mongoClient = new MongoClient(process.env.MONGODB_URI, {
+          connectTimeoutMS: 10000,
+          serverSelectionTimeoutMS: 10000
+        });
+        this.mongoClient.connect()
+          .then(() => {
+            this.mongoDb = this.mongoClient.db(process.env.MONGODB_DATABASE || 'n_cafe');
+            this.startupError = null;
+            console.log('Connected to MongoDB database successfully.');
+            callback(null);
+          })
+          .catch((err) => {
+            this.startupError = err;
+            console.error('MongoDB connection failed; retrying in 5 seconds:', err.message);
+            setTimeout(connectMongo, 5000);
+          });
+      };
+      connectMongo();
     } else if (this.isPostgres) {
       this.pgClient.connect((err) => {
         if (err) {
@@ -804,6 +817,11 @@ function authenticateToken(allowedRoles = []) {
 
 app.use('/api', (req, res, next) => {
   if (!db.ready) {
+    if (db.startupError) {
+      return res.status(503).json({
+        error: 'Database unavailable. Check the MongoDB Atlas connection, database user, and Network Access settings, then try again.'
+      });
+    }
     return res.status(503).json({ error: 'Database is still starting. Please try again in a moment.' });
   }
   next();
