@@ -102,7 +102,10 @@ class DB {
     this.isPostgres = false;
     this.queue = Promise.resolve();
 
-    const dbUrl = process.env.DATABASE_URL;
+    const configuredDbUrl = process.env.DATABASE_URL;
+    const dbUrl = typeof configuredDbUrl === 'string'
+      ? configuredDbUrl.trim().replace(/^(['"])(.*)\1$/, '$2').trim()
+      : '';
     const isHostedProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
     if (isHostedProduction && !dbUrl) {
       throw new Error(
@@ -127,7 +130,16 @@ class DB {
       }
     } else {
       if (dbUrl) {
-        throw new Error('DATABASE_URL must be a PostgreSQL connection string.');
+        let scheme = 'unknown';
+        try {
+          scheme = new URL(dbUrl).protocol.replace(':', '') || scheme;
+        } catch (err) {
+          // Keep the diagnostic safe: never print the configured database URL.
+        }
+        throw new Error(
+          `DATABASE_URL must be a PostgreSQL connection string (received scheme "${scheme}"). ` +
+          'In Render, set it to the database connection string, not the database name or dashboard URL.'
+        );
       }
       this.sqliteDb = new sqlite3.Database(DB_PATH);
     }
