@@ -8,6 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const tls = require('tls');
 const { MongoClient } = require('mongodb');
 
 function readEnvironmentValue(name) {
@@ -180,11 +181,16 @@ class DB {
         const mongoOptions = {
           connectTimeoutMS: 10000,
           serverSelectionTimeoutMS: 10000,
-          family: 4
+          family: 4,
+          retryWrites: true
         };
         if (this.mongoUri.startsWith('mongodb+srv://')) {
           mongoOptions.tls = true;
           mongoOptions.tlsAllowInvalidCertificates = false;
+          mongoOptions.secureContext = tls.createSecureContext({
+            minVersion: 'TLSv1.2',
+            maxVersion: 'TLSv1.2'
+          });
         }
         this.mongoClient = new MongoClient(this.mongoUri, mongoOptions);
         this.mongoClient.connect()
@@ -200,6 +206,16 @@ class DB {
             const safeTarget = this.mongoUri
               .replace(/:\/\/[^@]+@/, '://***@')
               .replace(/\?.*$/, '');
+            const authenticationFailed = err &&
+              (err.code === 18 || /bad auth|authentication failed/i.test(err.message || ''));
+            if (authenticationFailed) {
+              console.error(
+                `MongoDB authentication failed (${scheme}, ${safeTarget}). ` +
+                'Check the Atlas database username, password, and URL encoding in MONGODB_URI. ' +
+                'The server will not retry until the credentials are corrected and redeployed.'
+              );
+              return;
+            }
             console.error(
               `MongoDB connection failed (${scheme}, ${safeTarget}); ` +
               `retrying in 5 seconds: ${err.message}`
