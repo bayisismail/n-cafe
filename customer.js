@@ -991,9 +991,20 @@ function renderTicketPage() {
         if (current) {
           const overlayExpired = document.getElementById('ticket-overlay-expired');
           const overlayRedeemed = document.getElementById('ticket-overlay-redeemed');
+          const overlayCancelled = document.getElementById('ticket-overlay-cancelled');
           const timerDisplay = document.getElementById('ticket-timer-display');
 
+          if (current.status === 'cancelled') {
+            overlayCancelled.style.display = 'flex';
+            overlayExpired.style.display = 'none';
+            overlayRedeemed.style.display = 'none';
+            timerDisplay.style.display = 'none';
+            clearInterval(CanteenState.ticketTimerInterval);
+            return;
+          }
+
           if (current.status === 'redeemed') {
+            overlayCancelled.style.display = 'none';
             overlayRedeemed.style.display = 'flex';
             overlayExpired.style.display = 'none';
             timerDisplay.style.display = 'none';
@@ -1011,6 +1022,7 @@ function renderTicketPage() {
             }
             overlayExpired.style.display = 'flex';
             overlayRedeemed.style.display = 'none';
+            overlayCancelled.style.display = 'none';
             timerDisplay.style.display = 'none';
             clearInterval(CanteenState.ticketTimerInterval);
             return;
@@ -1020,6 +1032,7 @@ function renderTicketPage() {
           timerDisplay.style.display = 'flex';
           overlayExpired.style.display = 'none';
           overlayRedeemed.style.display = 'none';
+          overlayCancelled.style.display = 'none';
 
           const hours = Math.floor(remainingMs / 3600000);
           const minutes = Math.floor((remainingMs % 3600000) / 60000);
@@ -1076,7 +1089,7 @@ document.getElementById('retrieval-form').addEventListener('submit', async (e) =
 
     if (res.ok) {
       const allTickets = await res.json();
-      const tickets = allTickets.filter(t => t.status !== 'redeemed');
+      const tickets = allTickets.filter(t => t.status !== 'redeemed' && t.status !== 'cancelled');
       CanteenState.retrievedTickets = tickets;
       
       const resultsContainer = document.getElementById('retrieval-results');

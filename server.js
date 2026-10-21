@@ -691,7 +691,7 @@ function initializeDatabase() {
       paymentStatus TEXT NOT NULL,
       bookingTime TEXT NOT NULL,
       expiryTime TEXT NOT NULL,
-      status TEXT NOT NULL, -- pending, redeemed, expired
+      status TEXT NOT NULL, -- pending, redeemed, expired, cancelled
       redeemedTime TEXT
     )`);
 
@@ -1508,7 +1508,7 @@ app.post('/api/bookings/retrieve', (req, res) => {
   }
 
   db.all(
-    "SELECT * FROM bookings WHERE LOWER(customerName) = ? AND status != 'redeemed' ORDER BY bookingTime DESC",
+    "SELECT * FROM bookings WHERE LOWER(customerName) = ? AND status != 'redeemed' AND status != 'cancelled' ORDER BY bookingTime DESC",
     [safeName.toLowerCase()],
     async (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -1525,6 +1525,59 @@ app.post('/api/bookings/retrieve', (req, res) => {
       res.json(processed);
     }
   );
+});
+
+// Cancel a pending ticket (admin only; payment and ledger records are not altered).
+app.post('/api/bookings/:id/cancel', authenticateToken(['admin']), (req, res) => {
+  const bookingId = String(req.params.id || '').trim();
+  if (!bookingId || bookingId.length > 64) {
+    return res.status(400).json({ error: 'A valid ticket ID is required.' });
+  }
+
+  db.get('SELECT id, status, expiryTime FROM bookings WHERE id = ?', [bookingId], (err, booking) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!booking) return res.status(404).json({ error: 'Bill not found.' });
+    if (booking.status !== 'pending') {
+      return res.status(409).json({ error: `Only pending tickets can be cancelled. Current status: ${booking.status}.` });
+    }
+
+    if (new Date(booking.expiryTime).getTime() <= Date.now()) {
+      db.run("UPDATE bookings SET status = 'expired' WHERE id = ? AND status = 'pending'", [bookingId], updateErr => {
+        if (updateErr) return res.status(500).json({ error: updateErr.message });
+        return res.status(409).json({ error: 'This ticket has expired and cannot be cancelled.' });
+      });
+      return;
+    }
+
+    db.run("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND status = 'pending'", [bookingId], updateErr => {
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+      db.get('SELECT status FROM bookings WHERE id = ?', [bookingId], (checkErr, updatedBooking) => {
+        if (checkErr) return res.status(500).json({ error: checkErr.message });
+        if (!updatedBooking) return res.status(404).json({ error: 'Bill not found.' });
+        if (updatedBooking.status !== 'cancelled') {
+          return res.status(409).json({ error: `Ticket could not be cancelled. Current status: ${updatedBooking.status}.` });
+        }
+        res.json({ success: true, id: bookingId, status: 'cancelled' });
+      });
+    });
+  });
+});
+
+// Delete a bill record (admin only; retain its accounting ledger entry).
+app.delete('/api/bookings/:id', authenticateToken(['admin']), (req, res) => {
+  const bookingId = String(req.params.id || '').trim();
+  if (!bookingId || bookingId.length > 64) {
+    return res.status(400).json({ error: 'A valid ticket ID is required.' });
+  }
+
+  db.get('SELECT id FROM bookings WHERE id = ?', [bookingId], (err, booking) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!booking) return res.status(404).json({ error: 'Bill not found.' });
+    db.run('DELETE FROM bookings WHERE id = ?', [bookingId], deleteErr => {
+      if (deleteErr) return res.status(500).json({ error: deleteErr.message });
+      res.json({ success: true, id: bookingId });
+    });
+  });
 });
 
 // --- API RAZORPAY PAYMENT ENDPOINTS ---
@@ -1857,6 +1910,9 @@ app.post('/api/bookings/redeem', authenticateToken(['admin', 'operator']), (req,
 
     if (booking.status === 'redeemed') {
       return res.status(409).json({ error: 'Ticket already redeemed.', redeemedTime: booking.redeemedTime });
+    }
+    if (booking.status === 'cancelled') {
+      return res.status(410).json({ error: 'Ticket cancelled by an administrator.', status: 'cancelled' });
     }
 
     // Expiry check
