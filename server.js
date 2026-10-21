@@ -802,13 +802,21 @@ function seedDatabase() {
   });
 
   db.serialize(() => {
+    db.run(
+      "UPDATE food_items SET image = 'assets/' || image WHERE image IN ('masala_dosa.png', 'idli_sambar.png', 'filter_coffee.png', 'vada_combo.png', 'south_indian_meals.png', 'rava_dosa.png')",
+      [],
+      err => {
+        if (err) console.error('Failed to correct seeded food image paths:', err);
+      }
+    );
+
     const defaultFoods = [
-      ['FD-101', 'Masala Dosa Special', 80, 20, 'Breakfast', 'Veg', 'masala_dosa.png', 'Crispy dosa with potato filling served with sambar and coconut chutney.'],
-      ['FD-102', 'Idli Sambar (2 Pcs)', 50, 15, 'Breakfast', 'Veg', 'idli_sambar.png', 'Soft steamed rice cakes served with hot sambar and tomato chutney.'],
-      ['FD-103', 'Misty Hills Filter Coffee', 30, 40, 'Beverages', 'Veg', 'filter_coffee.png', 'Traditional South Indian frothy chicory blended coffee.'],
-      ['FD-104', 'Vada Sambar Combo', 60, 25, 'Breakfast', 'Veg', 'vada_combo.png', 'Crispy fried lentil donuts served with side sambar and dips.'],
-      ['FD-105', 'Nilgiri South Indian Meals', 120, 15, 'Lunch', 'Veg', 'south_indian_meals.png', 'Traditional South Indian mini meals with rice, sambar, rasam, poriyal, appalam, and curd.'],
-      ['FD-106', 'Steaming Hot Rava Dosa', 90, 15, 'Dinner', 'Veg', 'rava_dosa.png', 'Crispy semolina dosa spiced with black pepper, cumin, and green chillies.']
+      ['FD-101', 'Masala Dosa Special', 80, 20, 'Breakfast', 'Veg', 'assets/masala_dosa.png', 'Crispy dosa with potato filling served with sambar and coconut chutney.'],
+      ['FD-102', 'Idli Sambar (2 Pcs)', 50, 15, 'Breakfast', 'Veg', 'assets/idli_sambar.png', 'Soft steamed rice cakes served with hot sambar and tomato chutney.'],
+      ['FD-103', 'Misty Hills Filter Coffee', 30, 40, 'Beverages', 'Veg', 'assets/filter_coffee.png', 'Traditional South Indian frothy chicory blended coffee.'],
+      ['FD-104', 'Vada Sambar Combo', 60, 25, 'Breakfast', 'Veg', 'assets/vada_combo.png', 'Crispy fried lentil donuts served with side sambar and dips.'],
+      ['FD-105', 'Nilgiri South Indian Meals', 120, 15, 'Lunch', 'Veg', 'assets/south_indian_meals.png', 'Traditional South Indian mini meals with rice, sambar, rasam, poriyal, appalam, and curd.'],
+      ['FD-106', 'Steaming Hot Rava Dosa', 90, 15, 'Dinner', 'Veg', 'assets/rava_dosa.png', 'Crispy semolina dosa spiced with black pepper, cumin, and green chillies.']
     ];
     defaultFoods.forEach(food => {
       db.get("SELECT COUNT(*) as count FROM food_items WHERE id = ?", [food[0]], (err, checkRow) => {
