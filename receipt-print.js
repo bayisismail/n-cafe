@@ -163,13 +163,17 @@
       frame = document.createElement('iframe');
       frame.title = 'Receipt print frame';
       frame.style.cssText = 'position:fixed;left:0;top:0;width:58mm;height:100vh;border:0;z-index:-1;';
-      frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:58mm auto;margin:0}html,body{width:58mm;margin:0;padding:0;background:transparent}img{display:block;width:58mm;height:auto;margin:0;padding:0}</style></head><body></body></html>';
+      frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><style id="receipt-print-style">@page{size:58mm auto;margin:0}html,body{width:58mm;margin:0;padding:0;background:transparent}img{display:block;width:58mm;height:auto;margin:0;padding:0}</style></head><body></body></html>';
 
       frame.addEventListener('load', () => {
         const printWindow = frame.contentWindow;
         const image = frame.contentDocument.createElement('img');
         image.alt = 'Text-only cafe receipt';
         image.onload = () => {
+          const pageHeightMm = Math.ceil((image.naturalHeight / image.naturalWidth) * PAPER_WIDTH_MM + 1);
+          const style = frame.contentDocument.getElementById('receipt-print-style');
+          style.textContent = `@page{size:${PAPER_WIDTH_MM}mm ${pageHeightMm}mm;margin:0}html,body{width:${PAPER_WIDTH_MM}mm;height:${pageHeightMm}mm;margin:0;padding:0;overflow:hidden;background:transparent}img{display:block;width:${PAPER_WIDTH_MM}mm;height:auto;margin:0;padding:0}`;
+          frame.style.height = `${pageHeightMm}mm`;
           printWindow.addEventListener('afterprint', finish, { once: true });
           window.addEventListener('afterprint', finish, { once: true });
           try {
